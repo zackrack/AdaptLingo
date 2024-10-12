@@ -3,17 +3,17 @@ __pycache__/
 *.py[cod]
 
 # Ignore downloaded models
-model_assets/
+model_assets
+.
 
 # Ignore flask session data
-flask_session/
+flask_session
+.
 
 # Ignore audio outputs
-generated_audio/
+generated_audio
+.
 
 # Conda environment files
 _conda
 conda
-
-# Add other directories or files you don't want to track
-
