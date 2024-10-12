@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Chatbot Interface</title>
+    <!-- Include jQuery for AJAX requests -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <!-- Include a CSS file for basic styling (optional) -->
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f2f2f2;
+        }
+        #chat-container {
+            width: 60%;
+            margin: 0 auto;
+        }
+        #conversation {
+            background-color: #fff;
+            padding: 15px;
+            height: 400px;
+            overflow-y: scroll;
+            border: 1px solid #ccc;
+        }
+        .message {
+            margin-bottom: 15px;
+        }
+        .user-message {
+            text-align: right;
+            color: blue;
+        }
+        .bot-message {
+            text-align: left;
+            color: green;
+        }
+        #message-input {
+            width: 80%;
+            padding: 10px;
+            margin-top: 10px;
+        }
+        #send-button {
+            padding: 10px 20px;
+            margin-top: 10px;
+        }
+        #config-container {
+            width: 60%;
+            margin: 30px auto;
+            background-color: #fff;
+            padding: 15px;
+            border: 1px solid #ccc;
+        }
+        #config-container h2 {
+            margin-top: 0;
+        }
+        .config-item {
+            margin-bottom: 15px;
+        }
+        .config-item label {
+            display: block;
+            font-weight: bold;
+        }
+        .config-item input, .config-item textarea {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+        }
+        #update-config-button {
+            padding: 10px 20px;
+        }
+        .status-message {
+            color: red;
+            font-weight: bold;
+        }
+        /* Audio player styling */
+        audio {
+            display: block;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="chat-container">
+    <h1>Chat with the Assistant</h1>
+    <div id="conversation"></div>
+    <input type="text" id="message-input" placeholder="Type your message here..." autocomplete="off">
+    <button id="send-button">Send</button>
+    <audio id="audio-player" controls style="display: none;"></audio>
+</div>
+
+<div id="config-container">
+    <h2>Configuration Settings</h2>
+    <form id="config-form">
+        <!-- Configuration fields will be populated here -->
+    </form>
+    <button id="update-config-button">Update Configuration</button>
+    <p class="status-message" id="config-status"></p>
+</div>
+
+<script>
+    $(document).ready(function() {
+        // Function to append messages to the conversation
+        function appendMessage(sender, message) {
+            var messageClass = sender === 'User' ? 'user-message' : 'bot-message';
+            $('#conversation').append(
+                '<div class="message ' + messageClass + '"><strong>' + sender + ':</strong> ' + message + '</div>'
+            );
+            // Scroll to the bottom
+            $('#conversation').scrollTop($('#conversation')[0].scrollHeight);
+        }
+
+        // Handle sending messages
+        $('#send-button').click(function() {
+            var userMessage = $('#message-input').val().trim();
+            if (userMessage === '') {
+                return;
+            }
+            appendMessage('User', userMessage);
+            $('#message-input').val('');
+            // Send message to the server
+            $.ajax({
+                url: '/chat',
+                type: 'POST',
+                data: { message: userMessage },
+                success: function(response) {
+                    appendMessage('Assistant', response.message);
+                    if (response.audio_url) {
+                        // Play the audio response
+                        $('#audio-player').attr('src', response.audio_url);
+                        $('#audio-player').show();
+                        $('#audio-player')[0].play();
+                    }
+                },
+                error: function(xhr, status, error) {
+                    appendMessage('Assistant', 'Error: ' + error);
+                }
+            });
+        });
+
+        // Allow pressing Enter key to send message
+        $('#message-input').keypress(function(e) {
+            if (e.which === 13) {
+                $('#send-button').click();
+                return false; // Prevent the default form submission
+            }
+        });
+
+        // Load current configuration settings
+        function loadConfig() {
+            $.ajax({
+                url: '/get_config',
+                type: 'GET',
+                success: function(config) {
+                    // Clear the form
+                    $('#config-form').empty();
+                    // Populate the form with config values
+                    for (var key in config) {
+                        if (config.hasOwnProperty(key)) {
+                            var value = config[key];
+                            if (typeof value === 'object') {
+                                // For nested objects, use a textarea
+                                $('#config-form').append(
+                                    '<div class="config-item">' +
+                                        '<label for="' + key + '">' + key + ' (JSON format):</label>' +
+                                        '<textarea id="' + key + '" name="' + key + '">' + JSON.stringify(value, null, 4) + '</textarea>' +
+                                    '</div>'
+                                );
+                            } else {
+                                $('#config-form').append(
+                                    '<div class="config-item">' +
+                                        '<label for="' + key + '">' + key + ':</label>' +
+                                        '<input type="text" id="' + key + '" name="' + key + '" value="' + value + '">' +
+                                    '</div>'
+                                );
+                            }
+                        }
+                    }
+                },
+                error: function(xhr, status, error) {
+                    $('#config-status').text('Error loading configuration: ' + error);
+                }
+            });
+        }
+
+        // Load config on page load
+        loadConfig();
+
+        // Handle updating configuration
+        $('#update-config-button').click(function() {
+            var configData = {};
+            $('#config-form').find('input, textarea').each(function() {
+                var key = $(this).attr('name');
+                var value = $(this).val();
+                try {
+                    // Try to parse JSON for object fields
+                    if ($(this).is('textarea')) {
+                        value = JSON.parse(value);
+                    }
+                } catch (e) {
+                    $('#config-status').text('Invalid JSON format in ' + key);
+                    return false;
+                }
+                configData[key] = value;
+            });
+
+            // Send updated config to the server
+            $.ajax({
+                url: '/update_config',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify(configData),
+                success: function(response) {
+                    $('#config-status').css('color', 'green').text(response.message);
+                    // Reload the config form to reflect changes
+                    loadConfig();
+                },
+                error: function(xhr, status, error) {
+                    var errorMessage = xhr.responseJSON ? xhr.responseJSON.message : error;
+                    $('#config-status').css('color', 'red').text('Error updating configuration: ' + errorMessage);
+                }
+            });
+        });
+    });
+</script>
+
+</body>
+</html>

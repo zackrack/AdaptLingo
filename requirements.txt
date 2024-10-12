@@ -1,0 +1,13 @@
+transformers
+torch
+torchvision
+torchaudio
+sentence-transformers
+chromadb
+scikit-learn
+bitsandbytes
+style-bert-vits2
+soundfile
+nltk
+flask
+flas-session
