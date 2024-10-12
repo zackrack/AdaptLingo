@@ -1,0 +1,19 @@
+# Ignore Python cache files
+__pycache__/
+*.py[cod]
+
+# Ignore downloaded models
+model_assets/
+
+# Ignore flask session data
+flask_session/
+
+# Ignore audio outputs
+generated_audio/
+
+# Conda environment files
+_conda
+conda
+
+# Add other directories or files you don't want to track
+
