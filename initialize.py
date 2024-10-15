@@ -27,6 +27,7 @@ def initialize():
 
     # Define a directory to download the NLTK data to
     nltk_data_path = os.path.expanduser('~/nltk_data')
+
     if not os.path.exists(nltk_data_path):
         os.makedirs(nltk_data_path)
 
@@ -37,6 +38,12 @@ def initialize():
         nltk.data.find('taggers/averaged_perceptron_tagger')
     except LookupError:
         nltk.download('averaged_perceptron_tagger', download_dir=nltk_data_path)
+
+    # Download the required NLTK resource
+    try:
+        nltk.data.find('taggers/averaged_perceptron_tagger_eng')
+    except LookupError:
+        nltk.download('averaged_perceptron_tagger_eng', download_dir=nltk_data_path)
 
     # Initialize ChromaDB client
     client = chromadb.Client()

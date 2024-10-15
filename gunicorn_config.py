@@ -1,3 +1,5 @@
+# From vits-simple-api
+
 import gc
 import multiprocessing
 
@@ -5,7 +7,7 @@ bind = "0.0.0.0:55557"
 # workers = multiprocessing.cpu_count()
 workers = 1
 # preload_app = True # This breaks breaks everything, don't comment this out
-timeout = 120
+timeout = 300 # Long timeout to download larger models
 
 # disable GC in master as early as possible
 gc.disable()

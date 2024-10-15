@@ -40,7 +40,9 @@ def create_boost_processor(tokenizer, boost_words, boost_value):
 
 def create_stopping_criteria(tokenizer):
     stop_sequences = [
+        tokenizer.encode("User:", add_special_tokens=False),
         tokenizer.encode("\nUser:", add_special_tokens=False),
+        tokenizer.encode("Assistant:", add_special_tokens=False),
         tokenizer.encode("\nAssistant:", add_special_tokens=False)
     ]
     return StoppingCriteriaList([StopOnTokens(stop_sequences)])

@@ -1,5 +1,5 @@
 {
-    "model_name": "mistralai/Mistral-7B-Instruct-v0.3",
+    "model_name": "Qwen/Qwen2.5-7B-instruct",
     "word_list_filename": "words/word_list.txt",
     "essential_words_filename": "words/essential_words.txt",
     "boost_value": 2.0,
