@@ -73,3 +73,13 @@ This endpoint processes user input and returns a chatbot response, optionally ge
 
 ```bash
 curl -X POST http://localhost:55556/chat -H "Content-Type: application/json" -d '{"message": "Hello!"}'
+```
+
+## Todo:
+
+- Dynamically delete generated audio after next message (right now it's staying in the cache)
+- Speech recognition
+- Separate word lists into levels
+- Retrieve words based on user level
+- Judge user level with pratt
+- Judge user level with grammar
