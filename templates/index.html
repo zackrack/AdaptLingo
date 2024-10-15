@@ -5,7 +5,6 @@
     <title>Chatbot Interface</title>
     <!-- Include jQuery for AJAX requests -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <!-- Include a CSS file for basic styling (optional) -->
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -32,7 +31,7 @@
         }
         .bot-message {
             text-align: left;
-            color: green;
+            color: green.
         }
         #message-input {
             width: 80%;
@@ -70,19 +69,19 @@
         }
         .status-message {
             color: red;
-            font-weight: bold;
+            font-weight: bold.
         }
         /* Audio player styling */
         audio {
             display: block;
-            margin-top: 10px;
+            margin-top: 10px.
         }
     </style>
 </head>
 <body>
 
 <div id="chat-container">
-    <h1>Chat with the Assistant</h1>
+    <h1>adaptive-chatbot-api</h1>
     <div id="conversation"></div>
     <input type="text" id="message-input" placeholder="Type your message here..." autocomplete="off">
     <button id="send-button">Send</button>
@@ -99,127 +98,152 @@
 </div>
 
 <script>
-    $(document).ready(function() {
-        // Function to append messages to the conversation
-        function appendMessage(sender, message) {
-            var messageClass = sender === 'User' ? 'user-message' : 'bot-message';
-            $('#conversation').append(
-                '<div class="message ' + messageClass + '"><strong>' + sender + ':</strong> ' + message + '</div>'
-            );
-            // Scroll to the bottom
-            $('#conversation').scrollTop($('#conversation')[0].scrollHeight);
+    // Function to append messages to the conversation
+    function appendMessage(sender, message) {
+        var messageClass = sender === 'User' ? 'user-message' : 'bot-message';
+        $('#conversation').append(
+            '<div class="message ' + messageClass + '"><strong>' + sender + ':</strong> ' + message + '</div>'
+        );
+        // Scroll to the bottom
+        $('#conversation').scrollTop($('#conversation')[0].scrollHeight);
+    }
+
+    // Handle sending messages
+    $('#send-button').click(function() {
+        var userMessage = $('#message-input').val().trim();
+        if (userMessage === '') {
+            return;
         }
-
-        // Handle sending messages
-        $('#send-button').click(function() {
-            var userMessage = $('#message-input').val().trim();
-            if (userMessage === '') {
-                return;
-            }
-            appendMessage('User', userMessage);
-            $('#message-input').val('');
-            // Send message to the server
-            $.ajax({
-                url: '/chat',
-                type: 'POST',
-                data: { message: userMessage },
-                success: function(response) {
-                    appendMessage('Assistant', response.message);
-                    if (response.audio_url) {
-                        // Play the audio response
-                        $('#audio-player').attr('src', response.audio_url);
-                        $('#audio-player').show();
-                        $('#audio-player')[0].play();
-                    }
-                },
-                error: function(xhr, status, error) {
-                    appendMessage('Assistant', 'Error: ' + error);
+        appendMessage('User', userMessage);
+        $('#message-input').val('');
+        // Send message to the server
+        $.ajax({
+            url: '/chat',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ message: userMessage }),
+            success: function(response) {
+                appendMessage('Assistant', response.message);
+                if (response.audio_url) {
+                    // Play the audio response
+                    $('#audio-player').attr('src', response.audio_url);
+                    $('#audio-player').show();
+                    $('#audio-player')[0].play();
                 }
-            });
-        });
-
-        // Allow pressing Enter key to send message
-        $('#message-input').keypress(function(e) {
-            if (e.which === 13) {
-                $('#send-button').click();
-                return false; // Prevent the default form submission
+            },
+            error: function(xhr, status, error) {
+                appendMessage('Assistant', 'Error: ' + error);
             }
         });
+    });
 
-        // Load current configuration settings
-        function loadConfig() {
-            $.ajax({
-                url: '/get_config',
-                type: 'GET',
-                success: function(config) {
-                    // Clear the form
-                    $('#config-form').empty();
-                    // Populate the form with config values
-                    for (var key in config) {
-                        if (config.hasOwnProperty(key)) {
-                            var value = config[key];
-                            if (typeof value === 'object') {
-                                // For nested objects, use a textarea
+    // Allow pressing Enter key to send message
+    $('#message-input').keypress(function(e) {
+        if (e.which === 13) {
+            $('#send-button').click();
+            return false; // Prevent the default form submission
+        }
+    });
+
+    // Load current configuration settings
+    function loadConfig() {
+        $.ajax({
+            url: '/get_config',
+            type: 'GET',
+            success: function(config) {
+                // Clear the form
+                $('#config-form').empty();
+
+                // Populate the form with top-level config values
+                $('#config-form').append('<h3>General Settings</h3>');
+                for (var key in config) {
+                    if (config.hasOwnProperty(key)) {
+                        var value = config[key];
+                        // Handle nested objects like bert_models and tts_model separately
+                        if (key === 'bert_models') {
+                            $('#config-form').append('<h3>BERT Models</h3>');
+                            for (var bertKey in value) {
                                 $('#config-form').append(
                                     '<div class="config-item">' +
-                                        '<label for="' + key + '">' + key + ' (JSON format):</label>' +
-                                        '<textarea id="' + key + '" name="' + key + '">' + JSON.stringify(value, null, 4) + '</textarea>' +
-                                    '</div>'
-                                );
-                            } else {
-                                $('#config-form').append(
-                                    '<div class="config-item">' +
-                                        '<label for="' + key + '">' + key + ':</label>' +
-                                        '<input type="text" id="' + key + '" name="' + key + '" value="' + value + '">' +
+                                        '<label for="bert_' + bertKey + '">BERT ' + bertKey + ' Model:</label>' +
+                                        '<input type="text" id="bert_' + bertKey + '" name="bert_models[' + bertKey + ']" value="' + value[bertKey] + '">' +
                                     '</div>'
                                 );
                             }
+                        } else if (key === 'tts_model') {
+                            $('#config-form').append('<h3>TTS Model</h3>');
+                            for (var ttsKey in value) {
+                                $('#config-form').append(
+                                    '<div class="config-item">' +
+                                        '<label for="tts_' + ttsKey + '">TTS ' + ttsKey + ':</label>' +
+                                        '<input type="text" id="tts_' + ttsKey + '" name="tts_model[' + ttsKey + ']" value="' + value[ttsKey] + '">' +
+                                    '</div>'
+                                );
+                            }
+                        } else {
+                            $('#config-form').append(
+                                '<div class="config-item">' +
+                                    '<label for="' + key + '">' + key + ':</label>' +
+                                    '<input type="text" id="' + key + '" name="' + key + '" value="' + value + '">' +
+                                '</div>'
+                            );
                         }
                     }
-                },
-                error: function(xhr, status, error) {
-                    $('#config-status').text('Error loading configuration: ' + error);
                 }
-            });
+            },
+            error: function(xhr, status, error) {
+                $('#config-status').text('Error loading configuration: ' + error);
+            }
+        });
+    }
+
+    // Load config on page load
+    loadConfig();
+
+    $('#update-config-button').click(function() {
+        var configData = {};
+
+        $('#config-form').find('input').each(function() {
+            var key = $(this).attr('name');
+            var value = $(this).val();
+
+            // Check if the key represents a nested object
+            if (key.includes('[')) {
+                // Extract the top-level key and the nested key
+                var topKey = key.split('[')[0];
+                var nestedKey = key.split('[')[1].replace(']', '');
+
+                // Initialize the nested object if it doesn't exist
+                if (!configData[topKey]) {
+                    configData[topKey] = {};
+                }
+                configData[topKey][nestedKey] = value;
+            } else {
+                configData[key] = value;
+            }
+        });
+
+        // Convert boost_value to a number if necessary
+        if (configData['boost_value']) {
+            configData['boost_value'] = parseFloat(configData['boost_value']);
         }
 
-        // Load config on page load
-        loadConfig();
-
-        // Handle updating configuration
-        $('#update-config-button').click(function() {
-            var configData = {};
-            $('#config-form').find('input, textarea').each(function() {
-                var key = $(this).attr('name');
-                var value = $(this).val();
-                try {
-                    // Try to parse JSON for object fields
-                    if ($(this).is('textarea')) {
-                        value = JSON.parse(value);
-                    }
-                } catch (e) {
-                    $('#config-status').text('Invalid JSON format in ' + key);
-                    return false;
-                }
-                configData[key] = value;
-            });
-
-            // Send updated config to the server
-            $.ajax({
-                url: '/update_config',
-                type: 'POST',
-                contentType: 'application/json',
-                data: JSON.stringify(configData),
-                success: function(response) {
-                    $('#config-status').css('color', 'green').text(response.message);
-                    // Reload the config form to reflect changes
-                    loadConfig();
-                },
-                error: function(xhr, status, error) {
-                    var errorMessage = xhr.responseJSON ? xhr.responseJSON.message : error;
-                    $('#config-status').css('color', 'red').text('Error updating configuration: ' + errorMessage);
-                }
-            });
+        // Send updated config to the server as JSON
+        $.ajax({
+            url: '/update_config',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(configData),
+            success: function(response) {
+                $('#config-status').css('color', 'green').text(response.message);
+                setTimeout(function() {
+                    $('#config-status').fadeOut();
+                }, 3000);
+                loadConfig();  // Reload the config form to reflect changes
+            },
+            error: function(xhr, status, error) {
+                $('#config-status').css('color', 'red').text('Error updating configuration: ' + error);
+            }
         });
     });
 </script>

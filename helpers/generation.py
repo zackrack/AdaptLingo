@@ -42,7 +42,7 @@ def generate_response(model, tokenizer, prompt, logits_processor, stopping_crite
             attention_mask=inputs["attention_mask"],  # Add the attention mask here
             max_new_tokens=50,
             do_sample=True,
-            temperature=0.7,
+            temperature=0.2,
             pad_token_id=tokenizer.eos_token_id,
             logits_processor=logits_processor,
             stopping_criteria=stopping_criteria

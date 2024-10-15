@@ -2,18 +2,18 @@
     "model_name": "mistralai/Mistral-7B-Instruct-v0.3",
     "word_list_filename": "words/word_list.txt",
     "essential_words_filename": "words/essential_words.txt",
-    "boost_value": 2,
+    "boost_value": 2.0,
     "sentencetransformer_model": "all-mpnet-base-v2",
     "bert_models": {
-        "JP": "ku-nlp/deberta-v2-large-japanese-char-wwm",
         "EN": "microsoft/deberta-v3-large",
+        "JP": "ku-nlp/deberta-v2-large-japanese-char-wwm",
         "ZH": "hfl/chinese-roberta-wwm-ext-large"
     },
     "tts_model": {
-        "model_file": "jvnv-M1/jvnv-M1.safetensors",
         "config_file": "jvnv-M1/config.json",
-        "style_file": "jvnv-M1/style_vectors.npy",
+        "device": "cuda",
         "hf_repo": "litagin/style_bert_vits2_jvnv",
-        "device": "cuda"
+        "model_file": "jvnv-M1/jvnv-M1.safetensors",
+        "style_file": "jvnv-M1/style_vectors.npy"
     }
 }

@@ -10,4 +10,5 @@ style-bert-vits2
 soundfile
 nltk
 flask
-flas-session
+flask-session
+flask_cors

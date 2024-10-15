@@ -1,2 +1,20 @@
+import gc
+import multiprocessing
+
+bind = "0.0.0.0:55557"
+# workers = multiprocessing.cpu_count()
 workers = 1
-bind = '0.0.0.0:55556'
+# preload_app = True # This breaks breaks everything, don't comment this out
+timeout = 120
+
+# disable GC in master as early as possible
+gc.disable()
+
+def when_ready(server):
+    # freeze objects after preloading app
+    gc.freeze()
+    print("Objects frozen in perm gen: ", gc.get_freeze_count())
+
+def post_fork(server, worker):
+    # reenable GC on worker
+    gc.enable()

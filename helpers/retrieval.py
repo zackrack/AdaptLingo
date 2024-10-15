@@ -28,12 +28,31 @@ def knn_search(prompt, embedding_model, collection):
 def get_or_create_collection(client, collection_name, words, word_embeddings):
     try:
         collection = client.get_collection(name=collection_name)
-        # Add words and their embeddings to the collection
-        print(f"Collection '{collection_name}' already exists. Adding words and their embeddings.")
-        collection.add(
-            documents=words,
-            embeddings=word_embeddings.tolist(),
-            ids=words)
+        print(f"Collection '{collection_name}' already exists.")
+        
+        # Retrieve the existing IDs (words) in the collection
+        existing_ids = set(collection.get()['ids'])
+
+        # Identify new words (IDs) to add
+        new_words = []
+        new_embeddings = []
+
+        for i, word in enumerate(words):
+            if word not in existing_ids:
+                new_words.append(word)
+                new_embeddings.append(word_embeddings[i])
+            # else:
+            #     print(f"Embedding ID '{word}' already exists. Skipping addition.")
+
+        if new_words:
+            print(f"Adding {len(new_words)} new embeddings to the collection.")
+            collection.add(
+                documents=new_words,
+                embeddings=[embedding.tolist() for embedding in new_embeddings],
+                ids=new_words
+            )
+        else:
+            print("No new embeddings to add.")
     except Exception as e:
         print(f"Collection '{collection_name}' not found. Creating a new one.")
         collection = client.create_collection(name=collection_name)

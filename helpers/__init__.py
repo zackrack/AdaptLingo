@@ -5,6 +5,7 @@ from .generation import generate_speech_from_text, generate_response
 from .processors import BoostLogitsProcessor, StopOnTokens, create_boost_processor, create_stopping_criteria
 from .retrieval import knn_search, get_or_create_collection
 from .text_handling import read_words_file, build_prompt
+from .config_handling import load_config, update_config, load_initial_data, reinitialize_models
 
 __all__ = [
     "load_bert_model",              # Load the BERT model (now set for English)
@@ -19,5 +20,9 @@ __all__ = [
     "knn_search",                   # Function for KNN search in the embeddings
     "get_or_create_collection",     # Create or get a ChromaDB collection
     "read_words_file",              # Function to read word lists
-    "build_prompt"                  # Build the prompt for chatbot generation
+    "build_prompt",                  # Build the prompt for chatbot generation
+    "load_config",
+    "update_config",
+    "load_initial_data",
+    "reinitialize_models"
 ]

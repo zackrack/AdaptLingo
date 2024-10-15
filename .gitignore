@@ -11,7 +11,7 @@ flask_session
 .
 
 # Ignore audio outputs
-generated_audio
+static/audio
 .
 
 # Conda environment files
