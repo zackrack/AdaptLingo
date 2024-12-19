@@ -25,3 +25,5 @@ evaluation.py
 *.csv
 
 *.png
+
+invalid_words_statistics.json
