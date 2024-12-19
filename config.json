@@ -1,9 +1,10 @@
 {
-    "model_name": "Qwen/Qwen2.5-7B-instruct",
+    "model_name": "mistralai/Mistral-7B-Instruct-v0.3",
     "word_list_filename": "words/word_list.txt",
     "essential_words_filename": "words/essential_words.txt",
     "boost_value": 2.0,
     "sentencetransformer_model": "all-mpnet-base-v2",
+    "whisper_model": "base",
     "bert_models": {
         "EN": "microsoft/deberta-v3-large",
         "JP": "ku-nlp/deberta-v2-large-japanese-char-wwm",
@@ -12,8 +13,8 @@
     "tts_model": {
         "config_file": "jvnv-M1/config.json",
         "device": "cuda",
-        "hf_repo": "litagin/style_bert_vits2_jvnv",
-        "model_file": "jvnv-M1/jvnv-M1.safetensors",
+        "hf_repo": "litagin/Style-Bert-VITS2-1.0-base",
+        "model_file": "G_0.safetensors",
         "style_file": "jvnv-M1/style_vectors.npy"
     }
 }

@@ -18,6 +18,7 @@ This repository contains a Flask-based chatbot with a web interface and API. The
 - Dynamic configuration management with real-time reloading.
 - Supports embedding-based search using K-Nearest Neighbors (KNN) with a user-defined boost value.
 - Simple HTML-based frontend for chatting with the assistant.
+- Speech recognition for inputs.
 
 ## Installation
 
@@ -75,11 +76,24 @@ This endpoint processes user input and returns a chatbot response, optionally ge
 curl -X POST http://localhost:55556/chat -H "Content-Type: application/json" -d '{"message": "Hello!"}'
 ```
 
-## Todo:
+## Common error solutions:
+- Make sure the Praat application is installed on your system and replace the praat_executable path in audio.py. You may have to build praat from source if you are using a Columbia machine.
+    - To build praat from source:
+    1. git clone https://github.com/praat/praat.git
+    2. conda install cmake gcc gxx gtk3 alsa-lib -c conda-forge 
+       conda install gcc gxx cmake -c conda-forge
+    3. cd praat
+    4. mkdir build
+    5. cd build
+    6. cmake ..
+    7. make -j$(nproc)
+- Make sure ffmpeg is installed on your system.
 
+## Todo:
 - Dynamically delete generated audio after next message (right now it's staying in the cache)
-- Speech recognition
 - Separate word lists into levels
 - Retrieve words based on user level
 - Judge user level with pratt
 - Judge user level with grammar
+- Train English TTS Model for Style-BERT-VITS2
+- Test whether audio input features work -- Over browser HTTPS or other library implementation, we can test it temporarily with premade audio files.

@@ -12,3 +12,4 @@ nltk
 flask
 flask-session
 flask_cors
+openai-whisper

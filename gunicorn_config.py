@@ -3,7 +3,7 @@
 import gc
 import multiprocessing
 
-bind = "0.0.0.0:55557"
+bind = "0.0.0.0:55203"
 # workers = multiprocessing.cpu_count()
 workers = 1
 # preload_app = True # This breaks breaks everything, don't comment this out

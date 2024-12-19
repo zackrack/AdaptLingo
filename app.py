@@ -13,7 +13,10 @@ from helpers import (
     load_config,
     update_config,
     load_initial_data,
-    reinitialize_models
+    reinitialize_models,
+    transcribe_audio,
+    run_praat_script,
+    read_praat_output
 )
 from initialize import initialize
 
@@ -47,26 +50,46 @@ def index():
         session['conversation_history'] = ""
     return render_template('index.html')
 
-# Combined chat endpoint for both HTML interface and API
 @app.route('/chat', methods=['POST'])
 def chat():
-    # Check if the request contains JSON data
-    if request.is_json:
+    global init_data
+    whisper_model = init_data['whisper_model']
+
+    user_input = None
+    praat_output = "No audio input."
+
+    if 'audio' in request.files:
+        # Use the helper function to transcribe the audio
+        audio_file = request.files['audio']
+        user_input, audio_file_path = transcribe_audio(audio_file, whisper_model)
+
+        # Run the Praat script on the audio file
+        praat_output_file = run_praat_script(audio_file_path)
+
+        if praat_output_file:
+            # Read the Praat output
+            praat_output = read_praat_output(praat_output_file)
+        else:
+            praat_output = "Praat processing failed."
+
+        # Clean up the temporary audio file
+        os.remove(audio_file_path)
+
+    elif request.is_json:
         data = request.get_json()
         user_input = data.get('message', '').strip()
+
     else:
-        # Assume form data
         user_input = request.form.get('message', '').strip()
 
     if not user_input:
-        return jsonify({'message': 'No message provided.', 'audio_url': ''}), 400
+        return jsonify({'message': 'No message provided.', 'audio_url': '', 'praat_output': praat_output}), 400
 
     if user_input.lower() == "exit":
         session.pop('conversation_history', None)
-        return jsonify({'message': 'Conversation ended.', 'audio_url': ''})
+        return jsonify({'message': 'Conversation ended.', 'audio_url': '', 'praat_output': praat_output})
 
-    # Use global init_data
-    global init_data
+    # Proceed with your existing model setup and response generation
     model = init_data['model']
     tokenizer = init_data['tokenizer']
     tts_model = init_data['tts_model']
@@ -75,9 +98,6 @@ def chat():
     essential_words = init_data['essential_words']
     boost_value = init_data['boost_value']
     device = init_data['device']
-
-    # Device configuration
-    device = next(model.parameters()).device
 
     # Process the user input and generate a response
     boost_words = knn_search(user_input, embedding_model, collection) + essential_words
@@ -94,23 +114,21 @@ def chat():
         model, tokenizer, prompt, logits_processor, stopping_criteria, device
     )
 
-    # Append the user input and assistant response to the conversation history
+    # Append to conversation history
     conversation_history += f"User: {user_input}\nAssistant: {assistant_response}\n"
     session['conversation_history'] = conversation_history
 
-    # Generate speech from the assistant's response using the pre-loaded TTS model
+    # Generate speech from the assistant's response
     audio_file_path = generate_speech_from_text(tts_model, assistant_response)
+    audio_url = url_for('audio', filename=os.path.basename(audio_file_path)) if audio_file_path else ''
 
-    if audio_file_path:
-        # Get the audio file name from the path
-        audio_file_name = os.path.basename(audio_file_path)
-        # Build the audio URL
-        audio_url = url_for('audio', filename=audio_file_name)
-    else:
-        audio_url = ''
-
-    # Return the assistant's response and the audio URL
-    return jsonify({'message': assistant_response, 'audio_url': audio_url})
+    # Return the assistant's response and audio URL
+    return jsonify({
+        'message': assistant_response,
+        'audio_url': audio_url,
+        'praat_output': praat_output,
+        'boost_words': boost_words
+    })
 
 # Serve audio files
 @app.route('/audio/<path:filename>')

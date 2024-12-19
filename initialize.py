@@ -5,6 +5,8 @@ import nltk
 import chromadb
 import torch  # Ensure torch is imported
 from sentence_transformers import SentenceTransformer
+import whisper
+
 from helpers import (
     load_llm_model, load_bert_model, load_tts_model,
     read_words_file, get_or_create_collection
@@ -24,6 +26,7 @@ def initialize():
     sentencetransformer_model_name = config.get('sentencetransformer_model')
     bert_models_config = config.get('bert_models')
     tts_model_config = config.get('tts_model')
+    whisper_model = config.get("whisper_model")
 
     # Define a directory to download the NLTK data to
     nltk_data_path = os.path.expanduser('~/nltk_data')
@@ -47,6 +50,9 @@ def initialize():
 
     # Initialize ChromaDB client
     client = chromadb.Client()
+
+    # Load the Whisper model globally
+    whisper_model = whisper.load_model(whisper_model)
 
     # Load the main chatbot model
     model, tokenizer = load_llm_model(model_name)
@@ -88,5 +94,6 @@ def initialize():
         'collection': collection,
         'essential_words': essential_words,
         'boost_value': boost_value,
-        'device': device  # Include device if needed elsewhere
+        'device': device,
+        'whisper_model': whisper_model
     }

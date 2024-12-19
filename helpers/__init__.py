@@ -6,6 +6,7 @@ from .processors import BoostLogitsProcessor, StopOnTokens, create_boost_process
 from .retrieval import knn_search, get_or_create_collection
 from .text_handling import read_words_file, build_prompt
 from .config_handling import load_config, update_config, load_initial_data, reinitialize_models
+from .audio import transcribe_audio, read_praat_output, run_praat_script
 
 __all__ = [
     "load_bert_model",              # Load the BERT model (now set for English)
@@ -24,5 +25,8 @@ __all__ = [
     "load_config",
     "update_config",
     "load_initial_data",
-    "reinitialize_models"
+    "reinitialize_models",
+    "transcribe_audio",
+    "run_praat_script",
+    "read_praat_output"
 ]

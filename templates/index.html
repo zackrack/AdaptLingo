@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <title>Chatbot Interface</title>
-    <!-- Include jQuery for AJAX requests -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.webrtc-experiment.com/RecordRTC.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -31,14 +31,14 @@
         }
         .bot-message {
             text-align: left;
-            color: green.
+            color: green;
         }
         #message-input {
             width: 80%;
             padding: 10px;
             margin-top: 10px;
         }
-        #send-button {
+        #send-button, #record-button {
             padding: 10px 20px;
             margin-top: 10px;
         }
@@ -69,12 +69,17 @@
         }
         .status-message {
             color: red;
-            font-weight: bold.
+            font-weight: bold;
         }
-        /* Audio player styling */
         audio {
             display: block;
-            margin-top: 10px.
+            margin-top: 10px;
+        }
+        .praat-output {
+        background-color: #eef;
+        padding: 10px;
+        margin-bottom: 15px;
+        border-left: 3px solid #99f;
         }
     </style>
 </head>
@@ -85,30 +90,29 @@
     <div id="conversation"></div>
     <input type="text" id="message-input" placeholder="Type your message here..." autocomplete="off">
     <button id="send-button">Send</button>
+    <button id="record-button">🎤 Record Audio</button>
     <audio id="audio-player" controls style="display: none;"></audio>
 </div>
 
 <div id="config-container">
     <h2>Configuration Settings</h2>
-    <form id="config-form">
-        <!-- Configuration fields will be populated here -->
-    </form>
+    <form id="config-form"></form>
     <button id="update-config-button">Update Configuration</button>
     <p class="status-message" id="config-status"></p>
 </div>
 
 <script>
-    // Function to append messages to the conversation
+    let mediaRecorder;
+    let audioChunks = [];
+
     function appendMessage(sender, message) {
         var messageClass = sender === 'User' ? 'user-message' : 'bot-message';
         $('#conversation').append(
             '<div class="message ' + messageClass + '"><strong>' + sender + ':</strong> ' + message + '</div>'
         );
-        // Scroll to the bottom
         $('#conversation').scrollTop($('#conversation')[0].scrollHeight);
     }
 
-    // Handle sending messages
     $('#send-button').click(function() {
         var userMessage = $('#message-input').val().trim();
         if (userMessage === '') {
@@ -116,7 +120,7 @@
         }
         appendMessage('User', userMessage);
         $('#message-input').val('');
-        // Send message to the server
+        
         $.ajax({
             url: '/chat',
             type: 'POST',
@@ -125,10 +129,7 @@
             success: function(response) {
                 appendMessage('Assistant', response.message);
                 if (response.audio_url) {
-                    // Play the audio response
-                    $('#audio-player').attr('src', response.audio_url);
-                    $('#audio-player').show();
-                    $('#audio-player')[0].play();
+                    $('#audio-player').attr('src', response.audio_url).show()[0].play();
                 }
             },
             error: function(xhr, status, error) {
@@ -137,29 +138,82 @@
         });
     });
 
-    // Allow pressing Enter key to send message
-    $('#message-input').keypress(function(e) {
-        if (e.which === 13) {
-            $('#send-button').click();
-            return false; // Prevent the default form submission
+    $('#record-button').click(async function() {
+        if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    mediaRecorder = new MediaRecorder(stream);
+                    
+                    mediaRecorder.ondataavailable = function(event) {
+                        if (event.data.size > 0) {
+                            audioChunks.push(event.data);
+                        }
+                    };
+
+                    mediaRecorder.onstop = function() {
+                        const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                        audioChunks = [];
+                        sendAudioToServer(audioBlob);
+                    };
+
+                    mediaRecorder.start();
+                    $('#record-button').text('⏹ Stop Recording');
+                } catch (error) {
+                    alert('Could not start audio recording: ' + error.message);
+                }
+            } else {
+                alert('Audio recording is not supported by your browser.');
+            }
+        } else {
+            mediaRecorder.stop();
+            $('#record-button').text('🎤 Record Audio');
         }
     });
 
-    // Load current configuration settings
+    function sendAudioToServer(audioBlob) {
+        const formData = new FormData();
+        formData.append('audio', audioBlob, 'recorded_audio.wav');
+
+        $.ajax({
+            url: '/chat',
+            type: 'POST',
+            processData: false,
+            contentType: false,
+            data: formData,
+            success: function(response) {
+                appendMessage('Assistant', response.message);
+                if (response.audio_url) {
+                    $('#audio-player').attr('src', response.audio_url).show()[0].play();
+                }
+                if (response.praat_output) {
+                    appendPraatOutput(response.praat_output);
+                }
+            },
+            error: function(xhr, status, error) {
+                appendMessage('Assistant', 'Error: ' + error);
+            }
+        });
+    }
+
+    function appendPraatOutput(praatOutput) {
+        $('#conversation').append(
+            '<div class="message praat-output"><strong>Praat Output:</strong><br>' + praatOutput.replace(/\n/g, '<br>') + '</div>'
+        );
+        // Scroll to the bottom
+        $('#conversation').scrollTop($('#conversation')[0].scrollHeight);
+    }
+
     function loadConfig() {
         $.ajax({
             url: '/get_config',
             type: 'GET',
             success: function(config) {
-                // Clear the form
                 $('#config-form').empty();
-
-                // Populate the form with top-level config values
                 $('#config-form').append('<h3>General Settings</h3>');
                 for (var key in config) {
                     if (config.hasOwnProperty(key)) {
                         var value = config[key];
-                        // Handle nested objects like bert_models and tts_model separately
                         if (key === 'bert_models') {
                             $('#config-form').append('<h3>BERT Models</h3>');
                             for (var bertKey in value) {
@@ -197,7 +251,6 @@
         });
     }
 
-    // Load config on page load
     loadConfig();
 
     $('#update-config-button').click(function() {
@@ -207,13 +260,9 @@
             var key = $(this).attr('name');
             var value = $(this).val();
 
-            // Check if the key represents a nested object
             if (key.includes('[')) {
-                // Extract the top-level key and the nested key
                 var topKey = key.split('[')[0];
                 var nestedKey = key.split('[')[1].replace(']', '');
-
-                // Initialize the nested object if it doesn't exist
                 if (!configData[topKey]) {
                     configData[topKey] = {};
                 }
@@ -223,12 +272,10 @@
             }
         });
 
-        // Convert boost_value to a number if necessary
         if (configData['boost_value']) {
             configData['boost_value'] = parseFloat(configData['boost_value']);
         }
 
-        // Send updated config to the server as JSON
         $.ajax({
             url: '/update_config',
             type: 'POST',
@@ -239,7 +286,7 @@
                 setTimeout(function() {
                     $('#config-status').fadeOut();
                 }, 3000);
-                loadConfig();  // Reload the config form to reflect changes
+                loadConfig();
             },
             error: function(xhr, status, error) {
                 $('#config-status').css('color', 'red').text('Error updating configuration: ' + error);
