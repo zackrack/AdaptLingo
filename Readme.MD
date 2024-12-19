@@ -85,9 +85,9 @@ curl -X POST http://localhost:55556/chat -H "Content-Type: application/json" -d 
 ## Common Error Solutions
 
 ### 1. Ensure Praat is Installed
-The Praat application must be installed on your system. Update the `praat_executable` path in `audio.py` accordingly. If you are using a Columbia machine, you may need to build Praat from source.
+The Praat application must be installed on your system. Update the `praat_executable` path in `audio.py` accordingly. Depending on your situation, you may need to build Praat from source. 
 
-#### Steps to Build Praat from Source:
+#### Steps to Build Praat from Source (conda):
 1. Clone the Praat repository:
    ```bash
    git clone https://github.com/praat/praat.git
