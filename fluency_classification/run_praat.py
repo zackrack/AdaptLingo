@@ -1,39 +1,37 @@
-import os
-from werkzeug.utils import secure_filename
 import subprocess
-import os
 from pathlib import Path
-import pandas
+import os
 
-def transcribe_audio(audio_file, whisper_model):
-    audio_path = f"/tmp/{secure_filename(audio_file.filename)}"
-    audio_file.save(audio_path)
+# Define the parameters for the Praat script
+pre_processing = "Band pass (300..3300 Hz)"
+silence_threshold = -25.0
+minimum_dip_near_peak = 2.0
+minimum_pause_duration = 0.3
+detect_filled_pauses = True
+language = "English"
+filled_pause_threshold = 1.0
+data_output = "Save as text file"
+data_collection_type = "OverWriteData"
+keep_objects = True
 
-    transcription = whisper_model.transcribe(audio_path)
-    user_input = transcription['text'].strip()
+# Path to the Praat executable and script
+praat_executable = "C:/Program Files/Praat/praat.exe"  # Replace with the path to your Praat executable
+script_path = "Nuclei.praat"  # Replace with the path to your Praat script
 
-    os.remove(audio_path)
+# Base directory for the audio folders
+base_folder = "audio"
+audio_directories = ["A1", "A2", "B1", "B2", "C1", "C2", "Unknown"]
 
-    return user_input, audio_path
+# Function to process a single folder
+def process_folder(level):
+    sliced_folder = Path(base_folder) / level
 
-def run_praat_script(base_folder):
-    pre_processing = "Band pass (300..3300 Hz)"
-    silence_threshold = -25.0
-    minimum_dip_near_peak = 2.0
-    minimum_pause_duration = 0.3
-    detect_filled_pauses = True
-    language = "English"
-    filled_pause_threshold = 1.0
-    data_output = "Save as text file"
-    data_collection_type = "OverWriteData"
-    keep_objects = True
+    # Check if the sliced folder exists
+    if not sliced_folder.exists():
+        print(f"[DEBUG] Sliced folder not found: {sliced_folder}", flush=True)
+        return
 
-    praat_executable = "C:/Program Files/Praat/praat.exe"
-    script_path = "Nuclei.praat" 
-    base_folder = "audio/static"
-
-    sliced_folder = Path(base_folder)
-
+    # Define file specification for all .wav files in the sliced folder
     file_spec = str(sliced_folder / "*.wav")
 
     # Build the Praat command and arguments
@@ -68,6 +66,15 @@ def run_praat_script(base_folder):
             for line in process.stderr:
                 print(f"[Praat stderr]: {line.strip()}", flush=True)
 
+        # Verify the output file was created and rename it to avoid overwriting
+        output_file = "SyllableNuclei.txt"
+        if os.path.exists(output_file):
+            new_output_name = f"SyllableNuclei_{level}.txt"
+            os.rename(output_file, new_output_name)
+            print(f"[INFO] Output saved to: {new_output_name}", flush=True)
+        else:
+            print(f"[ERROR] Expected output file '{output_file}' not found for folder: {sliced_folder}", flush=True)
+
         print(f"[INFO] Successfully processed folder: {sliced_folder}", flush=True)
 
     except subprocess.CalledProcessError as e:
@@ -79,22 +86,8 @@ def run_praat_script(base_folder):
         # Catch any other unexpected exceptions
         print(f"[ERROR] Unexpected error processing folder {sliced_folder}: {e}", flush=True)
 
-    print("[INFO] Processing completed for all folders.", flush=True)
+# Process each folder sequentially
+for level in audio_directories:
+    process_folder(level)
 
-def read_praat_output():
-    with open('SyllableNuclei.txt', 'r') as f:
-        content = f.read()
-    return content
-
-# name, nsyll, npause, dur(s), phonationtime(s), speechrate(nsyll/dur), articulation_rate(nsyll/phonationtime), ASD(speakingtime/nsyll), nrFP, tFP(s)
-# audio_1314, 37, 9, 18.04, 10.59, 2.05, 3.49, 0.286, 5, 0.760 
-def parse_praat_output(output):
-    df = pandas.DataFrame(output)
-    speechrate = df[' speechrate(nsyll/dur)'][0]
-    artrate = df[' articulation_rate(nsyll/phonationtime)'][0]
-    asd = df[' ASD(speakingtime/nsyll)'][0]
-    return speechrate, artrate, asd
-
-def classify_fluency(model, speechrate, artrate, asd):
-    level = model.infer(speechrate, artrate, asd)
-    return level
+print("[INFO] Processing completed for all folders.", flush=True)

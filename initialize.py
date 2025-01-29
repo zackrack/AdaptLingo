@@ -27,6 +27,7 @@ def initialize():
     bert_models_config = config.get('bert_models')
     tts_model_config = config.get('tts_model')
     whisper_model = config.get("whisper_model")
+    rf_model = config.get("classifier_model")
 
     # Define a directory to download the NLTK data to
     nltk_data_path = os.path.expanduser('~/nltk_data')
@@ -95,5 +96,6 @@ def initialize():
         'essential_words': essential_words,
         'boost_value': boost_value,
         'device': device,
-        'whisper_model': whisper_model
+        'whisper_model': whisper_model,
+        'rf_model': rf_model
     }

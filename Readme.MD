@@ -24,8 +24,8 @@ This repository contains a Flask-based chatbot with a web interface and API. The
 
 1. Clone the repository:
     ```bash
-    git clone https://github.com/your-username/chatbot-interface-api.git
-    cd chatbot-interface-api
+    git clone https://github.com/zackrack/adaptivechatbot
+    cd adaptivechatbot
     ```
 
 2. (Recommended) Use a Python virtual environment:
@@ -41,12 +41,12 @@ This repository contains a Flask-based chatbot with a web interface and API. The
 
 4. Set up environment variables:
     - Make sure to set a secure Flask secret key.
-    - Optionally, configure `CUDA_VISIBLE_DEVICES` if using a GPU:
+    - Optionally, configure `CUDA_VISIBLE_DEVICES` if using a machine with multiple GPUs to only use one GPU:
       ```bash
       export CUDA_VISIBLE_DEVICES=0
       ```
 
-4. Configure your models and embeddings in `config.json`.
+4. (Optional, Configure your models and embeddings in `config.json`.
 
 ## Usage
 
@@ -59,7 +59,7 @@ This repository contains a Flask-based chatbot with a web interface and API. The
     - Visit `http://localhost:55556/` in your web browser to chat with the assistant via the web interface.
 
 3. **Interact via API**:
-    - You can also interact with the chatbot and update its configuration via the provided API endpoints (described below).
+    - You can also interact with the chatbot and update its configuration via the provided API endpoints.
 
 ## API Endpoints
 
@@ -88,6 +88,7 @@ curl -X POST http://localhost:55556/chat -H "Content-Type: application/json" -d 
 The Praat application must be installed on your system. Update the `praat_executable` path in `audio.py` accordingly. Depending on your situation, you may need to build Praat from source. 
 
 #### Steps to Build Praat from Source (conda):
+Note that you should install praat in a separate location that is not this repository since the folder holding the scripts here is also named 'praat.' Alternatively, you can rename the folder in this repository.
 1. Clone the Praat repository:
    ```bash
    git clone https://github.com/praat/praat.git
@@ -95,7 +96,6 @@ The Praat application must be installed on your system. Update the `praat_execut
 2. Install the required dependencies:
    ```bash
    conda install cmake gcc gxx gtk3 alsa-lib -c conda-forge
-   conda install gcc gxx cmake -c conda-forge
    ```
 3. Navigate to the cloned repository:
    ```bash
@@ -116,13 +116,11 @@ The Praat application must be installed on your system. Update the `praat_execut
    ```
 
 ### 2. Ensure FFmpeg is Installed
-Make sure FFmpeg is installed on your system. You can install it using a package manager like `apt` (Linux), `brew` (macOS), or from the [FFmpeg official website](https://ffmpeg.org/download.html).
+Make sure FFmpeg is installed on your system. You can install it using `apt` (Linux), `brew` (macOS), or from the [FFmpeg official website](https://ffmpeg.org/download.html).
 
 ## Todo:
 - Dynamically delete generated audio after next message (right now it's staying in the cache)
+- Implement download and inference with random forest classifier.
 - Separate word lists into levels
 - Retrieve words based on user level
-- Judge user level with pratt
-- Judge user level with grammar
 - Train English TTS Model for Style-BERT-VITS2
-- Test whether audio input features work -- Over browser HTTPS or other library implementation, we can test it temporarily with premade audio files.

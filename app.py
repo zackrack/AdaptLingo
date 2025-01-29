@@ -16,7 +16,9 @@ from helpers import (
     reinitialize_models,
     transcribe_audio,
     run_praat_script,
-    read_praat_output
+    read_praat_output,
+    parse_praat_output,
+    classify_fluency
 )
 from initialize import initialize
 
@@ -24,18 +26,15 @@ app = Flask(__name__)
 app.secret_key = 'your_secure_secret_key'  # Replace with a secure secret key in production
 app.config['SESSION_TYPE'] = 'filesystem'
 Session(app)
-# CORS(app)  # Uncomment this if CORS is needed for external API calls
+# CORS(app)
 
-# Global variables to hold models and configurations
 init_data = {}
-config_lock = Lock()  # To ensure thread safety during re-initialization
+config_lock = Lock()
 
 def load_app_data():
     global init_data
     with config_lock:
-        # Reload the configuration from the file
         init_data = load_initial_data(initialize)
-        # Print the configuration values for debugging
         print("Loaded Configuration:")
         # print(init_data)
 
@@ -59,20 +58,13 @@ def chat():
     praat_output = "No audio input."
 
     if 'audio' in request.files:
-        # Use the helper function to transcribe the audio
         audio_file = request.files['audio']
         user_input, audio_file_path = transcribe_audio(audio_file, whisper_model)
 
-        # Run the Praat script on the audio file
-        praat_output_file = run_praat_script(audio_file_path)
+        run_praat_script(audio_file_path)
 
-        if praat_output_file:
-            # Read the Praat output
-            praat_output = read_praat_output(praat_output_file)
-        else:
-            praat_output = "Praat processing failed."
+        praat_output = read_praat_output()
 
-        # Clean up the temporary audio file
         os.remove(audio_file_path)
 
     elif request.is_json:
@@ -89,7 +81,6 @@ def chat():
         session.pop('conversation_history', None)
         return jsonify({'message': 'Conversation ended.', 'audio_url': '', 'praat_output': praat_output})
 
-    # Proceed with your existing model setup and response generation
     model = init_data['model']
     tokenizer = init_data['tokenizer']
     tts_model = init_data['tts_model']
@@ -98,31 +89,30 @@ def chat():
     essential_words = init_data['essential_words']
     boost_value = init_data['boost_value']
     device = init_data['device']
+    # Init random forest model
+    rfmodel = init_data['rf_model']
 
-    # Process the user input and generate a response
+    speechrate, artrate, asd = parse_praat_output(praat_output)
+    fluency = classify_fluency(rfmodel, speechrate, artrate, asd)
+
     boost_words = knn_search(user_input, embedding_model, collection) + essential_words
     logits_processor = create_boost_processor(tokenizer, boost_words, boost_value)
     stopping_criteria = create_stopping_criteria(tokenizer)
 
-    # Build the prompt using conversation history
     system_message = build_prompt(boost_words, user_input)
     conversation_history = session.get('conversation_history', "")
     prompt = f"{system_message}\n{conversation_history}\nUser: {user_input}\nAssistant:"
 
-    # Generate the assistant's response
     assistant_response = generate_response(
         model, tokenizer, prompt, logits_processor, stopping_criteria, device
     )
 
-    # Append to conversation history
     conversation_history += f"User: {user_input}\nAssistant: {assistant_response}\n"
     session['conversation_history'] = conversation_history
 
-    # Generate speech from the assistant's response
     audio_file_path = generate_speech_from_text(tts_model, assistant_response)
     audio_url = url_for('audio', filename=os.path.basename(audio_file_path)) if audio_file_path else ''
 
-    # Return the assistant's response and audio URL
     return jsonify({
         'message': assistant_response,
         'audio_url': audio_url,
@@ -156,13 +146,10 @@ def update_config_route():
         if 'boost_value' in new_config:
             new_config['boost_value'] = float(new_config['boost_value'])
 
-        # Update the configuration file
         update_config(new_config)
 
-        # Reload the updated configuration from the file
-        load_app_data()  # This will reload init_data with the updated configuration
+        load_app_data()
 
-        # Start reinitialization in a background thread
         reinit_thread = Thread(target=reinitialize_models, args=(initialize,))
         reinit_thread.start()
 

@@ -16,5 +16,6 @@
         "hf_repo": "litagin/Style-Bert-VITS2-1.0-base",
         "model_file": "G_0.safetensors",
         "style_file": "jvnv-M1/style_vectors.npy"
-    }
+    },
+    "classifier_model": "models/rf_classifier.pkl"
 }
