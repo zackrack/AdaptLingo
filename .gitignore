@@ -29,3 +29,5 @@ evaluation.py
 invalid_words_statistics.json
 
 .venv/
+
+venv/
