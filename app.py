@@ -92,8 +92,9 @@ def chat():
     # Init random forest model
     rfmodel = init_data['rf_model']
 
-    speechrate, artrate, asd = parse_praat_output(praat_output)
-    fluency = classify_fluency(rfmodel, speechrate, artrate, asd)
+    # Commenting out to prevent DataFrame error
+    # speechrate, artrate, asd = parse_praat_output(praat_output)
+    # fluency = classify_fluency(rfmodel, speechrate, artrate, asd)
 
     boost_words = knn_search(user_input, embedding_model, collection) + essential_words
     logits_processor = create_boost_processor(tokenizer, boost_words, boost_value)
@@ -119,6 +120,7 @@ def chat():
         'praat_output': praat_output,
         'boost_words': boost_words
     })
+
 
 # Serve audio files
 @app.route('/audio/<path:filename>')

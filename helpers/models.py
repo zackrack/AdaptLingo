@@ -25,8 +25,10 @@ def load_bert_model(bert_models_config):
 def load_llm_model(base_model_name):
     """
     Loads the main chatbot model (LLM) with optional quantization for memory optimization.
+    Detects model type and configures the appropriate tokenizer.
     """
-    # Configure 4-bit quantization for the model to save memory
+
+    # Configure 4-bit quantization for memory optimization
     quantization_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_use_double_quant=True,
@@ -41,10 +43,32 @@ def load_llm_model(base_model_name):
         device_map="auto"
     )
 
-    # Load the tokenizer for the model
-    tokenizer = AutoTokenizer.from_pretrained(base_model_name)
+    # **Check model type to determine tokenizer settings**
+    model_type = model.config.model_type.lower()  # Get model type from config
+
+    # **Set tokenizer based on model type**
+    if model_type in ["llama", "codellama", "gemma"]:  # Models that require SentencePiece
+        tokenizer = AutoTokenizer.from_pretrained(
+            base_model_name, 
+            use_fast=False,  # Force use of SentencePiece
+            trust_remote_code=True
+        )
+    elif model_type in ["gpt2", "gptj", "gpt_neo", "opt", "mistral", "phi"]:  # Models that support fast tokenization
+        tokenizer = AutoTokenizer.from_pretrained(
+            base_model_name, 
+            use_fast=True,
+            trust_remote_code=True
+        )
+    else:
+        # Default behavior if model type is unknown
+        tokenizer = AutoTokenizer.from_pretrained(
+            base_model_name, 
+            trust_remote_code=True
+        )
 
     return model, tokenizer
+
+
 
 # Load the TTS model for speech synthesis (now moved to models.py)
 def load_tts_model(tts_model_config):

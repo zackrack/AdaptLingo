@@ -1,5 +1,5 @@
 {
-    "model_name": "mistralai/Mistral-7B-Instruct-v0.3",
+    "model_name": "BEE-spoke-data/smol_llama-101M-GQA",
     "word_list_filename": "words/word_list.txt",
     "essential_words_filename": "words/essential_words.txt",
     "boost_value": 2.0,
@@ -11,11 +11,11 @@
         "ZH": "hfl/chinese-roberta-wwm-ext-large"
     },
     "tts_model": {
-        "config_file": "jvnv-M1/config.json",
+        "config_file": "config.json",
         "device": "cuda",
-        "hf_repo": "litagin/Style-Bert-VITS2-1.0-base",
-        "model_file": "G_0.safetensors",
-        "style_file": "jvnv-M1/style_vectors.npy"
+        "hf_repo": "ThePioneer/MyVoiceClone-Style-Bert-VITS2",
+        "model_file": "jun_e200_s10600.safetensors",
+        "style_file": "style_vectors.npy"
     },
     "classifier_model": "models/rf_classifier.pkl"
 }
