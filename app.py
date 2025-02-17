@@ -21,6 +21,7 @@ from helpers import (
     classify_fluency
 )
 from initialize import initialize
+from calculate_features import calculate_all_features
 
 app = Flask(__name__)
 app.secret_key = 'your_secure_secret_key'  # Replace with a secure secret key in production
@@ -53,7 +54,7 @@ def index():
 def chat():
     global init_data
     whisper_model = init_data['whisper_model']
-
+    
     user_input = None
     praat_output = "No audio input."
 
@@ -61,10 +62,8 @@ def chat():
         audio_file = request.files['audio']
         user_input, audio_file_path = transcribe_audio(audio_file, whisper_model)
 
-        run_praat_script(audio_file_path)
-
-        praat_output = read_praat_output()
-
+        syll, sr, ar, asd = calculate_all_features(user_input, audio_file)
+        
         os.remove(audio_file_path)
 
     elif request.is_json:

@@ -20,3 +20,4 @@ sentencepiece
 tiktoken
 librosa
 praat-parselmouth
+git+https://github.com/nyrahealth/transformers.git@crisper_whisper
