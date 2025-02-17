@@ -17,5 +17,5 @@
         "model_file": "jun_e200_s10600.safetensors",
         "style_file": "style_vectors.npy"
     },
-    "classifier_model": "models/rf_classifier.pkl"
+    "classifier_model": "zrackau1/cefr_fluency_classifier"
 }

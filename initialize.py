@@ -3,14 +3,13 @@ import os
 import json
 import nltk
 import chromadb
-import torch  # Ensure torch is imported
+import torch 
 from sentence_transformers import SentenceTransformer
-#from faster_whisper import WhisperModel  # No longer needed if using CrisperWhisper
-import whisper  # You can remove if not needed
+from huggingface_hub import hf_hub_download
 
 from helpers import (
     load_llm_model, load_bert_model, load_tts_model,
-    read_words_file, get_or_create_collection
+    read_words_file, get_or_create_collection, load_crisper_model, load_rf_model
 )
 
 def initialize():
@@ -19,6 +18,8 @@ def initialize():
         config = json.load(config_file)
     print("Config loaded successfully.")
     
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
     # Extract configuration settings
     model_name = config.get('model_name')
     word_list_filename = config.get('word_list_filename')
@@ -53,32 +54,6 @@ def initialize():
     # Initialize ChromaDB client
     client = chromadb.Client()
 
-    # --- Initialize CrisperWhisper ASR Pipeline ---
-    from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
-    model_id = "nyrahealth/CrisperWhisper"
-    crisper_model = AutoModelForSpeechSeq2Seq.from_pretrained(
-        model_id,
-        torch_dtype=torch_dtype,
-        low_cpu_mem_usage=True,
-        use_safetensors=True
-    )
-    crisper_model.to(device)
-    crisper_processor = AutoProcessor.from_pretrained(model_id)
-    crisperwhisper_pipe = pipeline(
-        "automatic-speech-recognition",
-        model=crisper_model,
-        tokenizer=crisper_processor.tokenizer,
-        feature_extractor=crisper_processor.feature_extractor,
-        chunk_length_s=30,
-        batch_size=16,
-        return_timestamps="word",
-        torch_dtype=torch_dtype,
-        device=device,
-    )
-    # -------------------------------------------------
-
     # Load the main chatbot model
     model, tokenizer = load_llm_model(model_name)
     model.to(device)
@@ -106,6 +81,10 @@ def initialize():
     # Create or get the collection for word embeddings
     collection = get_or_create_collection(client, "word_embeddings", words, word_embeddings)
 
+    crisperwhisper_pipe = load_crisper_model()
+    # Load your model using joblib
+    clf = load_rf_model(rf_model)
+
     print("Initialized successfully.")
     # Return necessary variables as a dictionary, including our CrisperWhisper pipeline
     return {
@@ -118,5 +97,5 @@ def initialize():
         'boost_value': boost_value,
         'device': device,
         'crisperwhisper_pipe': crisperwhisper_pipe,  # New CrisperWhisper ASR pipeline
-        'rf_model': rf_model
+        'rf_model': clf
     }

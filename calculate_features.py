@@ -117,7 +117,7 @@ if __name__ == "__main__":
     # Initialize CrisperWhisper pipeline only
     crisperwhisper_pipe = initialize_crisperwhisper()
 
-    audio_file = "audio_1.wav"
+    audio_file = "audio_236.wav"
     # Use the CrisperWhisper pipeline for transcription with a seed prompt for fillers
     transcription = transcribe_audio(
         audio_file,

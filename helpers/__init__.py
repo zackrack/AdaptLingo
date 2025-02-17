@@ -1,6 +1,6 @@
 # helpers/__init__.py
 
-from .models import load_bert_model, load_llm_model, load_tts_model
+from .models import load_bert_model, load_llm_model, load_tts_model, load_crisper_model, load_rf_model
 from .generation import generate_speech_from_text, generate_response
 from .processors import BoostLogitsProcessor, StopOnTokens, create_boost_processor, create_stopping_criteria
 from .retrieval import knn_search, get_or_create_collection
@@ -28,4 +28,6 @@ __all__ = [
     "reinitialize_models",
     "transcribe_audio",
     "classify_fluency",
+    "load_crisper_model",
+    "load_rf_model"
 ]
