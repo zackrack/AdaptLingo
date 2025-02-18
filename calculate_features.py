@@ -6,6 +6,7 @@ from scipy.signal import savgol_filter
 from helpers import transcribe_audio  # Make sure this function works with your new ASR pipeline
 import nltk
 from nltk.corpus import cmudict
+from helpers import load_crisper_model
 
 cmu_dict = cmudict.dict()
 
@@ -112,10 +113,9 @@ def calculate_all_features(transcription, audio_file):
 
 if __name__ == "__main__":
     # Import just the CrisperWhisper initialization
-    from initialize_crisperwhisper import initialize_crisperwhisper
 
     # Initialize CrisperWhisper pipeline only
-    crisperwhisper_pipe = initialize_crisperwhisper()
+    crisperwhisper_pipe = load_crisper_model()
 
     audio_file = "audio_236.wav"
     # Use the CrisperWhisper pipeline for transcription with a seed prompt for fillers

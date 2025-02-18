@@ -15,9 +15,6 @@ from helpers import (
     load_initial_data,
     reinitialize_models,
     transcribe_audio,
-    run_praat_script,
-    read_praat_output,
-    parse_praat_output,
     classify_fluency
 )
 from initialize import initialize
@@ -54,48 +51,62 @@ def index():
 def chat():
     global init_data
     whisper_model = init_data['whisper_model']
-    
+    forest_classifier = init_data['rf_model']
+
     user_input = None
-    praat_output = "No audio input."
+    fluency_level = None  # default to None
 
     if 'audio' in request.files:
         audio_file = request.files['audio']
         user_input, audio_file_path = transcribe_audio(audio_file, whisper_model)
-
         syll, sr, ar, asd = calculate_all_features(user_input, audio_file)
-        
+        fluency_level = classify_fluency(forest_classifier, sr, ar, asd)
         os.remove(audio_file_path)
-
     elif request.is_json:
         data = request.get_json()
         user_input = data.get('message', '').strip()
-
     else:
         user_input = request.form.get('message', '').strip()
 
     if not user_input:
-        return jsonify({'message': 'No message provided.', 'audio_url': '', 'praat_output': praat_output}), 400
+        return jsonify({'message': 'No message provided.', 'audio_url': ''}), 400
 
     if user_input.lower() == "exit":
         session.pop('conversation_history', None)
-        return jsonify({'message': 'Conversation ended.', 'audio_url': '', 'praat_output': praat_output})
+        return jsonify({'message': 'Conversation ended.', 'audio_url': ''})
 
     model = init_data['model']
     tokenizer = init_data['tokenizer']
     tts_model = init_data['tts_model']
     embedding_model = init_data['embedding_model']
-    collection = init_data['collection']
     essential_words = init_data['essential_words']
     boost_value = init_data['boost_value']
     device = init_data['device']
-    # Init random forest model
-    rfmodel = init_data['rf_model']
 
-    # Commenting out to prevent DataFrame error
-    # speechrate, artrate, asd = parse_praat_output(praat_output)
-    # fluency = classify_fluency(rfmodel, speechrate, artrate, asd)
+    # Choose the word list and vector collection based on fluency level.
+    if fluency_level is not None:
+        if fluency_level == 0:
+            word_list = init_data.get('beginner_words', [])
+            vector_collection = init_data.get('beginner_collection', None)
+        elif fluency_level == 1:
+            word_list = init_data.get('intermediate_words', [])
+            vector_collection = init_data.get('intermediate_collection', None)
+        elif fluency_level == 2:
+            word_list = init_data.get('advanced_words', [])
+            vector_collection = init_data.get('advanced_collection', None)
+        else:
+            word_list = essential_words
+            vector_collection = None
+    else:
+        word_list = essential_words
+        vector_collection = None
 
-    boost_words = knn_search(user_input, embedding_model, collection) + essential_words
+    # Fallback: if no specific vector collection is provided, use a default one.
+    if vector_collection is None:
+        vector_collection = init_data.get('collection')
+
+    # Retrieve boost words from the appropriate vector collection and add the corresponding word list.
+    boost_words = knn_search(user_input, embedding_model, vector_collection) + word_list
     logits_processor = create_boost_processor(tokenizer, boost_words, boost_value)
     stopping_criteria = create_stopping_criteria(tokenizer)
 
@@ -116,7 +127,6 @@ def chat():
     return jsonify({
         'message': assistant_response,
         'audio_url': audio_url,
-        'praat_output': praat_output,
         'boost_words': boost_words
     })
 

@@ -1,13 +1,15 @@
+import re
+
 def read_words_file(filename):
-    # Open the file in read mode
     with open(filename, 'r') as file:
-        # Read the file contents
-        file_content = file.read()
-
-    # Replace newlines, split by commas, and remove surrounding quotes
-    words_list = file_content.replace('\n', '').split(',')
-    words_list = [word.strip().strip('"').strip("'") for word in words_list]
-
+        file_content = file.read().strip()
+    
+    # Split the file content on commas and/or newlines
+    words_list = re.split(r'[,\n]+', file_content)
+    
+    # Strip extra spaces and surrounding quotes, and filter out empty strings
+    words_list = [word.strip().strip('"').strip("'") for word in words_list if word.strip()]
+    
     return words_list
 
 def build_prompt(boost_words, user_input):

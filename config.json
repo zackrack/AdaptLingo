@@ -1,6 +1,8 @@
 {
     "model_name": "mistralai/Mistral-7B-Instruct-v0.3",
-    "word_list_filename": "words/word_list.txt",
+    "beginner_words_filename": "words/beginner_words.txt",
+    "intermediate_words_filename": "words/intermediate_words.txt",
+    "advanced_words_filename": "words/advanced_words.txt",
     "essential_words_filename": "words/essential_words.txt",
     "boost_value": 2.0,
     "sentencetransformer_model": "all-mpnet-base-v2",
