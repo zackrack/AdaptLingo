@@ -50,7 +50,7 @@ def index():
 @app.route('/chat', methods=['POST'])
 def chat():
     global init_data
-    whisper_model = init_data['whisper_model']
+    whisper_model = init_data['crisperwhisper_pipe']
     forest_classifier = init_data['rf_model']
 
     user_input = None
@@ -58,9 +58,16 @@ def chat():
 
     if 'audio' in request.files:
         audio_file = request.files['audio']
+        # transcribe_audio will save the file as .wav and return (transcription, file_path)
         user_input, audio_file_path = transcribe_audio(audio_file, whisper_model)
-        syll, sr, ar, asd = calculate_all_features(user_input, audio_file)
+
+        # If calculate_all_features needs the actual file on disk:
+        syll, sr, ar, asd = calculate_all_features(user_input, audio_file_path)
+
         fluency_level = classify_fluency(forest_classifier, sr, ar, asd)
+        print("Fluency level:", fluency_level)
+
+        # Remove the .wav file if you don't need it anymore
         os.remove(audio_file_path)
     elif request.is_json:
         data = request.get_json()
@@ -83,30 +90,21 @@ def chat():
     boost_value = init_data['boost_value']
     device = init_data['device']
 
+    if fluency_level is None:
+        fluency_level = 0
+        
     # Choose the word list and vector collection based on fluency level.
     if fluency_level is not None:
         if fluency_level == 0:
-            word_list = init_data.get('beginner_words', [])
             vector_collection = init_data.get('beginner_collection', None)
         elif fluency_level == 1:
-            word_list = init_data.get('intermediate_words', [])
             vector_collection = init_data.get('intermediate_collection', None)
         elif fluency_level == 2:
-            word_list = init_data.get('advanced_words', [])
             vector_collection = init_data.get('advanced_collection', None)
-        else:
-            word_list = essential_words
-            vector_collection = None
-    else:
-        word_list = essential_words
-        vector_collection = None
-
-    # Fallback: if no specific vector collection is provided, use a default one.
-    if vector_collection is None:
-        vector_collection = init_data.get('collection')
 
     # Retrieve boost words from the appropriate vector collection and add the corresponding word list.
-    boost_words = knn_search(user_input, embedding_model, vector_collection) + word_list
+    boost_words = knn_search(user_input, embedding_model, vector_collection) + essential_words
+    print(boost_words)
     logits_processor = create_boost_processor(tokenizer, boost_words, boost_value)
     stopping_criteria = create_stopping_criteria(tokenizer)
 

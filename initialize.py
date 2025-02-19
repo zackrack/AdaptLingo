@@ -24,6 +24,7 @@ def initialize():
     beginner_words_filename = config.get('beginner_words_filename')
     intermediate_words_filename = config.get('intermediate_words_filename')
     advanced_words_filename = config.get('advanced_words_filename')
+    essential_words_filename = config.get('essential_words_filename')
     boost_value = config.get('boost_value')
     sentencetransformer_model_name = config.get('sentencetransformer_model')
     bert_models_config = config.get('bert_models')
@@ -69,6 +70,7 @@ def initialize():
     beginner_words = read_words_file(beginner_words_filename)
     intermediate_words = read_words_file(intermediate_words_filename)
     advanced_words = read_words_file(advanced_words_filename)
+    essential_words = read_words_file(essential_words_filename)
     print("Word files read for beginner, intermediate, and advanced.")
 
     try:
@@ -101,6 +103,11 @@ def initialize():
     clf = load_rf_model(rf_model)
     print("Classifier model loaded.")
 
+    audio_dir = os.path.join("static", "audio")
+    if not os.path.exists(audio_dir):
+        os.makedirs(audio_dir)
+        print(f"Created audio directory at {audio_dir}")
+
     print("Initialization complete.")
     return {
         'model': model,
@@ -113,7 +120,8 @@ def initialize():
         'rf_model': clf,
         'beginner_collection': beginner_collection,
         'intermediate_collection': intermediate_collection,
-        'advanced_collection': advanced_collection
+        'advanced_collection': advanced_collection,
+        'essential_words': essential_words,
     }
 
 if __name__ == "__main__":
