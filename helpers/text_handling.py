@@ -14,7 +14,7 @@ def read_words_file(filename):
 
 def build_prompt(boost_words, user_input):
     system_message = f"""You are an English conversation partner who speaks concisely. 
-    Answer the following user's questions in two sentences. 
+    Answer the following user's questions in three sentences maximum. 
     The first sentence answers the question and the second sentence asks them back a question. 
     Your sentences will be as short as possible while still being conversational.
     You are only allowed to use the following words: {', '.join(boost_words)}.

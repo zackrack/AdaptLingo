@@ -1,5 +1,5 @@
 {
-    "model_name": "mistralai/Mistral-7B-Instruct-v0.3",
+    "model_name": "Qwen/Qwen2.5-14B-Instruct-1M",
     "beginner_words_filename": "words/beginner_words.txt",
     "intermediate_words_filename": "words/intermediate_words.txt",
     "advanced_words_filename": "words/advanced_words.txt",

@@ -35,11 +35,11 @@ def transcribe_audio(audio_file, crisperwhisper_pipe):
 
     # Combine all chunk texts
     transcription = " ".join(chunk["text"].strip() for chunk in pipeline_output["chunks"])
-
+    print("TRANSCRIPTION: ", transcription)
     # Return both transcription and the saved audio_path
     return transcription, audio_path
 
 
 def classify_fluency(model, speechrate, artrate, asd):
-    level = model.infer(speechrate, artrate, asd)
+    level = model.predict([[speechrate, artrate, asd]])
     return level

@@ -4,7 +4,7 @@ torchvision
 torchaudio
 sentence-transformers
 chromadb
-scikit-learn
+scikit-learn==1.5.2
 bitsandbytes
 style-bert-vits2
 soundfile
