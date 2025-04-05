@@ -8,6 +8,8 @@ import torch
 from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
 from huggingface_hub import hf_hub_download
 import joblib
+from faster_whisper import WhisperModel
+from datasets import load_dataset
 
 def load_rf_model(model_path):
     model_path = hf_hub_download(
@@ -17,30 +19,43 @@ def load_rf_model(model_path):
     clf = joblib.load(model_path)
     return clf
 
+
 def load_crisper_model():
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
-    model_id = "nyrahealth/CrisperWhisper"
-    crisper_model = AutoModelForSpeechSeq2Seq.from_pretrained(
-        model_id,
-        torch_dtype=torch_dtype,
-        low_cpu_mem_usage=True,
-        use_safetensors=True
-    )
-    crisper_model.to(device)
-    crisper_processor = AutoProcessor.from_pretrained(model_id)
-    crisperwhisper_pipe = pipeline(
-        "automatic-speech-recognition",
-        model=crisper_model,
-        tokenizer=crisper_processor.tokenizer,
-        feature_extractor=crisper_processor.feature_extractor,
-        chunk_length_s=30,
-        batch_size=16,
-        return_timestamps="word",
-        torch_dtype=torch_dtype,
-        device=device,
-    )
-    return crisperwhisper_pipe
+    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+    # model_id = "nyrahealth/CrisperWhisper"
+    # crisper_model = AutoModelForSpeechSeq2Seq.from_pretrained(
+    #     model_id,
+    #     torch_dtype=torch_dtype,
+    #     low_cpu_mem_usage=True,
+    #     use_safetensors=True
+    # )
+    # crisper_model.to(device)
+    # crisper_processor = AutoProcessor.from_pretrained(model_id)
+    # crisperwhisper_pipe = pipeline(
+    #     "automatic-speech-recognition",
+    #     model=crisper_model,
+    #     tokenizer=crisper_processor.tokenizer,
+    #     feature_extractor=crisper_processor.feature_extractor,
+    #     chunk_length_s=30,
+    #     batch_size=16,
+    #     return_timestamps="word",
+    #     torch_dtype=torch_dtype,
+    #     device=device,
+    #     generate_kwargs={"language": "en"},
+    # )
+
+
+    faster_whisper_model = 'nyrahealth/faster_CrisperWhisper'
+
+    # Initialize the Whisper model
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    torch_dtype = "float16" if torch.cuda.is_available() else "float32"
+    crisper_whisper_model = WhisperModel(faster_whisper_model, device=device, compute_type="float32")
+
+    return crisper_whisper_model
+    # return crisperwhisper_pipe
 
 def load_bert_model(bert_models_config):
     """
@@ -76,7 +91,8 @@ def load_llm_model(base_model_name):
     model = AutoModelForCausalLM.from_pretrained(
         base_model_name,
         quantization_config=quantization_config,
-        device_map="auto"
+        trust_remote_code=True, 
+        device_map={"":0}
     )
 
     # **Check model type to determine tokenizer settings**
