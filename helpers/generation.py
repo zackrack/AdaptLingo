@@ -36,7 +36,7 @@ def generate_speech_from_text(model, text, filename=None, language="EN"):
 
     # Ensure NLTK resource is available before running inference
     ensure_nltk_tagger_resource()
-
+ 
     try:
         # Run the TTS inference process
         sr, audio = model.infer(text=text, language=language)

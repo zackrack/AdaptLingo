@@ -1,84 +1,125 @@
 import os
-from werkzeug.utils import secure_filename
-import subprocess
+# from werkzeug.utils import secure_filename
+# import subprocess
 import os
-from pathlib import Path
-import pandas
+# from pathlib import Path
+# import pandas
 import uuid
 import re 
-from wordsegment import load, segment
-load()
+# from wordsegment import load, segment
+import torch
+import uuid
+import os
+import soundfile as sf
+import librosa
+import numpy as np
 
-def transcribe_audio(audio_file, crisperwhisper_pipe):
+# load()
+
+def transcribe_audio(audio_file, model, processor):
     """
-    Transcribe an audio file using the crisperwhisper_pipe pipeline.
-    If audio_file is a string, it's assumed to be a local file path.
-    Otherwise, it's a file-like object from Flask (request.files['audio']),
-    which we'll save to disk before transcription.
+    Hardened transcription function using CrisperWhisper (manual model+processor, not HF pipeline).
+    Handles stereo audio, resampling to 16kHz, silence check, and model-safe input.
+
+    Args:
+        audio_file: path to .wav file or Flask FileStorage object
+        model: HuggingFace AutoModelForSpeechSeq2Seq (CrisperWhisper)
+        processor: HuggingFace AutoProcessor (CrisperWhisper)
+
+    Returns:
+        transcription (str), audio_path (str)
     """
 
-    # Check if audio_file is just a path (str) or a file-like object
-    if isinstance(audio_file, str):
-        # Assume it's already a valid filepath
-        audio_path = audio_file
-    else:
-        # It's likely a Flask 'FileStorage' object; save to a unique .wav file in static/audio
+    # If it's a Flask-style file object, save to disk
+    if not isinstance(audio_file, str):
         filename = f"{uuid.uuid4()}.wav"
         audio_dir = os.path.join("static", "audio")
-        if not os.path.exists(audio_dir):
-            os.makedirs(audio_dir)
-
+        os.makedirs(audio_dir, exist_ok=True)
         audio_path = os.path.join(audio_dir, filename)
         audio_file.save(audio_path)
+    else:
+        audio_path = audio_file
 
-    # Use the CrisperWhisper pipeline
-    # pipeline_output = crisperwhisper_pipe(audio_path)
+    # Read and preprocess audio
+    try:
+        audio_array, sr = sf.read(audio_path)
 
-    # Combine all chunk texts
-    # transcription = " ".join(chunk["text"].strip() for chunk in pipeline_output["chunks"])
-    # print("TRANSCRIPTION: ", transcription)
-    # Return both transcription and the saved audio_path
+        if len(audio_array.shape) > 1:
+            audio_array = np.mean(audio_array, axis=1)  # Convert stereo to mono
 
-    segments, info = crisperwhisper_pipe.transcribe(
-        audio_path,
-        beam_size=5,
-        language="en",
-        word_timestamps=False  # ← this is default, but safe to be explicit
+        if np.max(np.abs(audio_array)) < 1e-4:
+            raise ValueError("Audio input is silent or empty.")
+
+        if sr != 16000:
+            audio_array = librosa.resample(audio_array, orig_sr=sr, target_sr=16000)
+            sr = 16000
+
+    except Exception as e:
+        raise RuntimeError(f"[Audio Error] Failed to load or preprocess audio: {e}")
+
+    # Tokenize input
+    inputs = processor(
+        audio=audio_array,
+        sampling_rate=sr,
+        return_tensors="pt"
     )
 
-    # 👇 Force evaluation of generator ONCE
-    segments = list(segments)
-    print("Segments: ", segments)
-    # 👇 Join all text pieces with space
-    transcription = smart_space_recover(" ".join(seg.text.strip() for seg in segments))
+    input_features = inputs["input_features"].to(device=model.device, dtype=model.dtype)
+    attention_mask = (input_features != 0.0).long()
 
-    print("TRANSCRIPTION:", transcription)
+    model.config.forced_decoder_ids = None
 
-    return transcription, audio_path
+    with torch.no_grad():
+        generated = model.generate(
+            input_features=input_features,
+            attention_mask=attention_mask,
+            max_new_tokens=440,
+            return_dict_in_generate=True,
+            output_scores=True,
+            do_sample=False,
+            language="en",
+        )
 
+    transcription = processor.batch_decode(generated.sequences, skip_special_tokens=True)[0]
+    return transcription.strip(), audio_path
+
+import re
+from transformers import pipeline
+
+# Grammar correction model
+fixer = pipeline("text2text-generation", model="vennify/t5-base-grammar-correction")
+
+# Filler word list
+filler_words = {"uh": 1, "um": 1, "ah": 1, "er": 1, "hmm": 1, "mmm": 1, "oh": 1, "eh": 1, "yeah": 1}
+
+# Dynamic filler tag maps
+FILLER_MAP = {f"[{word.upper()}]": word for word in filler_words}
+REVERSE_FILLER_MAP = {word: f"[{word.upper()}]" for word in filler_words}
+
+def prepare_text_with_fillers(raw):
+    """Convert [FILLER] tags to actual filler words like 'um'."""
+    text = raw
+    for tag, word in FILLER_MAP.items():
+        text = re.sub(re.escape(tag), word, text, flags=re.IGNORECASE)
+    return text
+
+def postprocess_fillers(text):
+    """Convert filler words like 'um' back to [FILLER] tags."""
+    for word, tag in REVERSE_FILLER_MAP.items():
+        text = re.sub(rf"\b{re.escape(word)}\b", tag, text, flags=re.IGNORECASE)
+    return text
 
 def smart_space_recover(text):
-    """
-    Split glued words (like 'Thisisatestsentence') into actual words.
-    Keeps punctuation and filler words intact.
-    """
-    # 1. Split at punctuation (so we treat sentences independently)
-    parts = re.split(r'([.?!])', text)
-    
-    fixed = []
-    for i in range(0, len(parts), 2):
-        chunk = parts[i].strip()
-        punct = parts[i + 1] if i + 1 < len(parts) else ""
-        
-        # Only run segmenter if chunk is more than one word and glued
-        if " " not in chunk and len(chunk) > 8:
-            split_chunk = " ".join(segment(chunk))
-        else:
-            split_chunk = chunk
-        
-        fixed.append(split_chunk + punct)
+    # Step 1: Replace filler tags with natural words
+    prepped = prepare_text_with_fillers(text)
 
-    return " ".join(fixed)
+    # Step 2: Grammar correction
+    prompt = f"grammar: {prepped}"
+    result = fixer(prompt, max_length=128, clean_up_tokenization_spaces=True)[0]['generated_text']
+
+    # Step 3: Re-tag fillers (optional)
+    final = postprocess_fillers(result)
+    return final
 
 def classify_fluency(model, speechrate, artrate, asd):
     level = model.predict([[speechrate, artrate, asd]])

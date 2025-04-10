@@ -21,40 +21,30 @@ def load_rf_model(model_path):
 
 
 def load_crisper_model():
-    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
-    # model_id = "nyrahealth/CrisperWhisper"
-    # crisper_model = AutoModelForSpeechSeq2Seq.from_pretrained(
-    #     model_id,
-    #     torch_dtype=torch_dtype,
-    #     low_cpu_mem_usage=True,
-    #     use_safetensors=True
-    # )
-    # crisper_model.to(device)
-    # crisper_processor = AutoProcessor.from_pretrained(model_id)
-    # crisperwhisper_pipe = pipeline(
-    #     "automatic-speech-recognition",
-    #     model=crisper_model,
-    #     tokenizer=crisper_processor.tokenizer,
-    #     feature_extractor=crisper_processor.feature_extractor,
-    #     chunk_length_s=30,
-    #     batch_size=16,
-    #     return_timestamps="word",
-    #     torch_dtype=torch_dtype,
-    #     device=device,
-    #     generate_kwargs={"language": "en"},
-    # )
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+    model_id = "nyrahealth/CrisperWhisper"
 
+    model = AutoModelForSpeechSeq2Seq.from_pretrained(
+        model_id,
+        torch_dtype=torch_dtype,
+        low_cpu_mem_usage=True,
+        use_safetensors=True
+    ).to(device)
 
-    faster_whisper_model = 'nyrahealth/faster_CrisperWhisper'
+    processor = AutoProcessor.from_pretrained(model_id)
 
-    # Initialize the Whisper model
+    return model, processor
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    torch_dtype = "float16" if torch.cuda.is_available() else "float32"
-    crisper_whisper_model = WhisperModel(faster_whisper_model, device=device, compute_type="float32")
+    # faster_whisper_model = 'nyrahealth/faster_CrisperWhisper'
 
-    return crisper_whisper_model
+    # # Initialize the Whisper model
+
+    # device = "cuda" if torch.cuda.is_available() else "cpu"
+    # torch_dtype = "float16" if torch.cuda.is_available() else "float32"
+    # crisper_whisper_model = WhisperModel(faster_whisper_model, device=device, compute_type="float32")
+
+    # return crisper_whisper_model
     # return crisperwhisper_pipe
 
 def load_bert_model(bert_models_config):

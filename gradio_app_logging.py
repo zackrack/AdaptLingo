@@ -21,6 +21,13 @@ from calculate_features import calculate_all_features
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 import uvicorn
+import uuid
+from logger import log_interaction
+import os
+import tempfile
+import numpy as np
+import soundfile as sf
+import openai
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -41,46 +48,62 @@ def load_app_data():
 
 load_app_data()
 
-# ------------------------------
-# Main processing function
-# ------------------------------
-def process_user_audio(audio_np, history):
-    global init_data
+client = openai.OpenAI(api_key="")
 
+# Sage or shimmer are the best
+def generate_speech_openai(text, voice="sage", model="tts-1", response_format="mp3"):
+    try:
+        response = client.audio.speech.create(
+            model=model,
+            voice=voice,
+            input=text,
+            response_format=response_format
+        )
+        return response.content  # bytes
+    except Exception as e:
+        print(f"[TTS ERROR] {e}")
+        return None
+
+def process_user_audio_openai(audio_np, history):
+    global init_data
     if audio_np is None or not isinstance(audio_np, tuple):
         return [("System", "No audio received.")], None, "Unknown", history
 
     sample_rate, audio_array = audio_np
 
-    # Save audio temporarily for processing
+    # Save user input temporarily
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmpfile:
         sf.write(tmpfile.name, audio_array, sample_rate)
         tmp_path = tmpfile.name
 
     try:
-        whisper_model = init_data['crisperwhisper_pipe']
+        crisperwhisper_model = init_data['crisperwhisper_model']
+        processor = init_data['crisperwhisper_processor']
+
         forest_classifier = init_data['rf_model']
 
-        user_input, audio_file_path = transcribe_audio(tmp_path, whisper_model)
-
+        user_input, audio_file_path = transcribe_audio(tmp_path, crisperwhisper_model, processor)
         syll, sr, ar, asd = calculate_all_features(user_input, audio_file_path)
         fluency_level = classify_fluency(forest_classifier, sr, ar, asd)
-
-        if fluency_level == 0:
-            vector_collection = init_data.get('beginner_collection', None)
-        elif fluency_level == 1:
-            vector_collection = init_data.get('intermediate_collection', None)
-        else:
-            vector_collection = init_data.get('advanced_collection', None)
         fluency_level = int(np.array(fluency_level).item())
+
+        # Choose vector DB by fluency
+        level_collections = [
+            init_data.get('beginner_collection'),
+            init_data.get('intermediate_collection'),
+            init_data.get('advanced_collection')
+        ]
+        vector_collection = level_collections[min(fluency_level, len(level_collections)-1)]
+
+        # Load other models
         model = init_data['model']
         tokenizer = init_data['tokenizer']
-        tts_model = init_data['tts_model']
         embedding_model = init_data['embedding_model']
         essential_words = init_data['essential_words']
         boost_value = init_data['boost_value']
         device = init_data['device']
 
+        # Build prompt with boost
         boost_words = knn_search(user_input, embedding_model, vector_collection) + essential_words
         logits_processor = create_boost_processor(tokenizer, boost_words, boost_value)
         stopping_criteria = create_stopping_criteria(tokenizer)
@@ -96,28 +119,42 @@ def process_user_audio(audio_np, history):
             model, tokenizer, prompt, logits_processor, stopping_criteria, device
         )
 
-        # Append to history
+        # Update history
         if not isinstance(history, list):
             history = []
         history.append({"role": "user", "content": user_input})
         history.append({"role": "assistant", "content": assistant_response})
 
-        # TTS output
-        tts_path = generate_speech_from_text(tts_model, assistant_response)
-        if not tts_path or not os.path.exists(tts_path):
+        # --- TTS ---
+        audio_bytes = generate_speech_openai(assistant_response)
+        if not audio_bytes:
             return history, None, fluency_level, history
 
-        with open(tts_path, "rb") as f:
-            audio_bytes = f.read()
-        os.remove(tts_path)
-        audio_output_np = np.frombuffer(audio_bytes, dtype=np.int16)
+        # Save TTS to temp file and load waveform
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tts_file:
+            tts_file.write(audio_bytes)
+            tts_path = tts_file.name
 
-        fluency_levels = ["Beginner 🟢", "Intermediate 🟡", "Advanced 🔵"]
+        # Decode MP3 into waveform
+        audio_output_np, out_sr = sf.read(tts_path, dtype='int16')
+        os.remove(tts_path)
+
+        # Label fluency level
+        fluency_labels = ["Beginner 🟢", "Intermediate 🟡", "Advanced 🔵"]
         if hasattr(fluency_level, "item"):
             fluency_level = fluency_level.item()
-        label = fluency_levels[fluency_level] if isinstance(fluency_level, int) and fluency_level < len(fluency_levels) else "Unknown"
+        label = fluency_labels[fluency_level] if isinstance(fluency_level, int) and fluency_level < len(fluency_labels) else "Unknown"
 
-        return history, (44100, audio_output_np), label, history
+        # Log everything
+        log_interaction(
+            session_id="default-session",
+            user_input=user_input,
+            assistant_response=assistant_response,
+            fluency_level=label,
+            audio_path=audio_file_path
+        )
+
+        return history, (out_sr, audio_output_np), label, history
 
     finally:
         if os.path.exists(tmp_path):
@@ -226,7 +263,7 @@ with gr.Blocks(css=custom_css) as demo:
     history_state = gr.State(value=[])
 
     submit_button.click(
-        fn=process_user_audio,
+        fn=process_user_audio_openai,
         inputs=[audio_input, history_state],
         outputs=[response_text, audio_output, fluency_label, history_state]
     ).then(

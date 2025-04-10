@@ -54,7 +54,8 @@ def initialize():
         nltk.download('cmudict', download_dir=nltk_data_path)
         print("Downloaded cmudict.")
 
-    client = chromadb.Client()
+    client = chromadb.PersistentClient(path="chroma_store")
+
     print("ChromaDB client initialized.")
 
     model, tokenizer = load_llm_model(model_name)
@@ -97,7 +98,7 @@ def initialize():
     advanced_collection = get_or_create_collection(client, "advanced_embeddings", advanced_words, advanced_embeddings)
     print("Advanced collection created.")
 
-    crisperwhisper_pipe = load_crisper_model()
+    crisperwhisper_model, crisperwhisper_processor = load_crisper_model()
     print("Crisper Whisper pipeline loaded.")
 
     clf = load_rf_model(rf_model)
@@ -116,13 +117,15 @@ def initialize():
         'embedding_model': embedding_model,
         'boost_value': boost_value,
         'device': device,
-        'crisperwhisper_pipe': crisperwhisper_pipe,
+        'crisperwhisper_model': crisperwhisper_model,
+        'crisperwhisper_processor': crisperwhisper_processor,
         'rf_model': clf,
         'beginner_collection': beginner_collection,
         'intermediate_collection': intermediate_collection,
         'advanced_collection': advanced_collection,
         'essential_words': essential_words,
     }
+
 
 if __name__ == "__main__":
     initialize()

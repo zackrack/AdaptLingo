@@ -14,6 +14,9 @@ flask_session
 static/audio
 .
 
+logs
+.
+
 # Conda environment files
 _conda
 conda
