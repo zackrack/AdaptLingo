@@ -28,6 +28,7 @@ import tempfile
 import numpy as np
 import soundfile as sf
 import openai
+from datetime import datetime
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -50,16 +51,26 @@ load_app_data()
 
 client = openai.OpenAI(api_key="")
 
+
+def fluency_to_speed(fluency_level):
+    if isinstance(fluency_level, int):
+        if fluency_level == 0:
+            return 0.8  # slow
+        elif fluency_level == 1:
+            return 0.9  # slightly slow
+    return 1.0  # default
+    
 # Sage or shimmer are the best
-def generate_speech_openai(text, voice="sage", model="tts-1", response_format="mp3"):
+def generate_speech_openai(text, fluency_level, voice="sage", model="tts-1", response_format="mp3"):
     try:
         response = client.audio.speech.create(
             model=model,
             voice=voice,
             input=text,
-            response_format=response_format
+            response_format=response_format,
+            speed = fluency_to_speed(fluency_level)        
         )
-        return response.content  # bytes
+        return response.content
     except Exception as e:
         print(f"[TTS ERROR] {e}")
         return None
@@ -67,14 +78,25 @@ def generate_speech_openai(text, voice="sage", model="tts-1", response_format="m
 def process_user_audio_openai(audio_np, history):
     global init_data
     if audio_np is None or not isinstance(audio_np, tuple):
-        return [("System", "No audio received.")], None, "Unknown", history
+        # ensure history is a list of {role,content} dicts
+        if not isinstance(history, list):
+            history = []
+        history.append({
+            "role": "system",
+            "content": "No audio received."
+        })
+        return history, None, "Unknown", history
 
+    # unpack the numpy tuple
     sample_rate, audio_array = audio_np
 
     # Save user input temporarily
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmpfile:
-        sf.write(tmpfile.name, audio_array, sample_rate)
-        tmp_path = tmpfile.name
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    save_dir = "saved_user_audio"
+    os.makedirs(save_dir, exist_ok=True)
+    tmp_path = os.path.join(save_dir, f"user_input_{timestamp}.wav")
+    sf.write(tmp_path, audio_array, sample_rate)
+
 
     try:
         crisperwhisper_model = init_data['crisperwhisper_model']
@@ -124,52 +146,54 @@ def process_user_audio_openai(audio_np, history):
             history = []
         history.append({"role": "user", "content": user_input})
         history.append({"role": "assistant", "content": assistant_response})
-
-        # --- TTS ---
-        audio_bytes = generate_speech_openai(assistant_response)
+        # 👇 FIRST generate the audio bytes
+        audio_bytes = generate_speech_openai(assistant_response, fluency_level)
+        
         if not audio_bytes:
+            print("[TTS] Failed to generate audio.")
             return history, None, fluency_level, history
-
-        # Save TTS to temp file and load waveform
+        
+        # 👇 THEN save it
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tts_file:
             tts_file.write(audio_bytes)
             tts_path = tts_file.name
+    
+            # Decode MP3 into waveform
+            audio_output_np, out_sr = sf.read(tts_path, dtype='int16')
+            os.remove(tts_path)
+    
+            # Label fluency level
+            fluency_labels = ["Beginner 🟢", "Intermediate 🟡", "Advanced 🔵"]
+            if hasattr(fluency_level, "item"):
+                fluency_level = fluency_level.item()
+            label = (
+                fluency_labels[fluency_level]
+                if isinstance(fluency_level, int) and fluency_level < len(fluency_labels)
+                else "Unknown"
+            )
+    
+            # Log everything
+            log_interaction(
+                session_id="default-session",
+                user_input=user_input,
+                assistant_response=assistant_response,
+                fluency_level=label,
+                audio_path=tmp_path  # Use the saved version
+            )
 
-        # Decode MP3 into waveform
-        audio_output_np, out_sr = sf.read(tts_path, dtype='int16')
-        os.remove(tts_path)
-
-        # Label fluency level
-        fluency_labels = ["Beginner 🟢", "Intermediate 🟡", "Advanced 🔵"]
-        if hasattr(fluency_level, "item"):
-            fluency_level = fluency_level.item()
-        label = fluency_labels[fluency_level] if isinstance(fluency_level, int) and fluency_level < len(fluency_labels) else "Unknown"
-
-        # Log everything
-        log_interaction(
-            session_id="default-session",
-            user_input=user_input,
-            assistant_response=assistant_response,
-            fluency_level=label,
-            audio_path=audio_file_path
-        )
-
-        return history, (out_sr, audio_output_np), label, history
+            # Return the adjusted sample rate + waveform
+            return history, (out_sr, audio_output_np), label, history
 
     finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+        print("Response processed")
 
-# ------------------------------
-# CSS Styling
-# ------------------------------
 custom_css = """
 #custom-title {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 1rem;
-    margin-bottom: 2rem;
+    margin-bottom: 0;
     text-align: center;
 }
 
@@ -188,13 +212,23 @@ custom_css = """
     line-height: 1.2;
 }
 
-#response-box {
-    font-size: 1.1rem;
-    line-height: 1.6;
-    max-height: 300px;
-    overflow-y: auto;
-    scroll-behavior: smooth;
+#instructions {
+    text-align: center;
+    font-size: 1.5rem;
+    color: white;
+    margin-top: 0.5rem;
     margin-bottom: 2rem;
+}
+
+#instructions ol {
+    display: inline-block;
+    text-align: left;
+    padding-left: 1.2rem;
+    margin: 0;
+}
+
+#instructions li {
+    margin-bottom: 0.4rem;
 }
 
 .gr-chatbot {
@@ -220,6 +254,7 @@ custom_css = """
 }
 """
 
+
 # ------------------------------
 # Gradio Interface
 # ------------------------------
@@ -229,7 +264,16 @@ with gr.Blocks(css=custom_css) as demo:
             <img src="/static/images/AdaptLingoAvatar.png" alt="Avatar" id="avatar-inline">
             <span>Talk with AdaptLingo!</span>
         </div>
+        <div id="instructions">
+            <ol>
+                <li>In the top box, press "record" and allow microphone access.</li>
+                <li>Speak into the microphone.</li>
+                <li>Press "Submit," and the chatbot will generate a response in the box below.</li>
+                <li>You can replay the speech in the bottom box.</li>
+            </ol>
+        </div>
     """)
+
 
     audio_input = gr.Audio(
         sources=["microphone"],
@@ -255,10 +299,11 @@ with gr.Blocks(css=custom_css) as demo:
         label="🔊 AdaptLingo Voice",
         interactive=False,
         autoplay=True,
-        type="filepath",
+        type="numpy",
         visible=True,
         value="static/audio/example.wav"
     )
+
 
     history_state = gr.State(value=[])
 
@@ -294,6 +339,6 @@ if __name__ == "__main__":
         public_url = ngrok.connect(port)
         print("Public URL:", public_url)
         # Launch the app using uvicorn
-        uvicorn.run(app, host="127.0.0.1", port=port)
+        uvicorn.run(app, host="127.0.0.1", port=7860)
     else:
         uvicorn.run(app, host="127.0.0.1", port=port)
