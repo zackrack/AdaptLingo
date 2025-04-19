@@ -1,129 +1,132 @@
 # initialize.py
+
 import os
 import json
 import nltk
 import chromadb
-import torch 
+import torch
 from sentence_transformers import SentenceTransformer
-from huggingface_hub import hf_hub_download
 
 from helpers import (
-    load_llm_model, load_bert_model, load_tts_model,
-    read_words_file, get_or_create_collection, load_crisper_model, load_rf_model
+    load_llm_model,
+    load_bert_model,
+    load_tts_model,
+    read_words_file,
+    get_or_create_collection,
+    load_crisper_model,
+    load_rf_model,
 )
+from helpers.generation import RAGConversationSystem
+
 
 def initialize():
-    with open('config.json', 'r') as config_file:
+    # ——— Load config
+    with open("config.json", "r") as config_file:
         config = json.load(config_file)
     print("Config loaded.")
 
+    # ——— Device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    model_name = config.get('model_name')
-    beginner_words_filename = config.get('beginner_words_filename')
-    intermediate_words_filename = config.get('intermediate_words_filename')
-    advanced_words_filename = config.get('advanced_words_filename')
-    essential_words_filename = config.get('essential_words_filename')
-    boost_value = config.get('boost_value')
-    sentencetransformer_model_name = config.get('sentencetransformer_model')
-    bert_models_config = config.get('bert_models')
-    tts_model_config = config.get('tts_model')
+    # ——— Config fields
+    model_name = config.get("model_name")
+    sentencetransformer_model_name = config.get("sentencetransformer_model")
+    max_history = config.get("max_history", 20)
+    beginner_words_filename = config.get("beginner_words_filename")
+    intermediate_words_filename = config.get("intermediate_words_filename")
+    advanced_words_filename = config.get("advanced_words_filename")
+    essential_words_filename = config.get("essential_words_filename")
+    boost_value = config.get("boost_value")
+    bert_models_config = config.get("bert_models")
+    tts_model_config = config.get("tts_model")
     rf_model = config.get("classifier_model")
 
-    nltk_data_path = os.path.expanduser('~/nltk_data')
-    if not os.path.exists(nltk_data_path):
-        os.makedirs(nltk_data_path)
-        print(f"Created NLTK data directory at {nltk_data_path}")
+    # ——— NLTK setup
+    nltk_data_path = os.path.expanduser("~/nltk_data")
+    os.makedirs(nltk_data_path, exist_ok=True)
     nltk.data.path.append(nltk_data_path)
-    print("NLTK data path set.")
+    for resource in [
+        "taggers/averaged_perceptron_tagger",
+        "taggers/averaged_perceptron_tagger_eng",
+        "corpora/cmudict",
+    ]:
+        try:
+            nltk.data.find(resource)
+        except LookupError:
+            nltk.download(resource.split("/")[-1], download_dir=nltk_data_path)
 
-    try:
-        nltk.data.find('taggers/averaged_perceptron_tagger')
-    except LookupError:
-        nltk.download('averaged_perceptron_tagger', download_dir=nltk_data_path)
-        print("Downloaded averaged_perceptron_tagger.")
-    try:
-        nltk.data.find('taggers/averaged_perceptron_tagger_eng')
-    except LookupError:
-        nltk.download('averaged_perceptron_tagger_eng', download_dir=nltk_data_path)
-        print("Downloaded averaged_perceptron_tagger_eng.")
-    try:
-        nltk.data.find('corpora/cmudict')
-    except LookupError:
-        nltk.download('cmudict', download_dir=nltk_data_path)
-        print("Downloaded cmudict.")
-
+    # ——— ChromaDB client
     client = chromadb.PersistentClient(path="chroma_store")
-
     print("ChromaDB client initialized.")
 
-    model, tokenizer = load_llm_model(model_name)
-    model.to(device)
-    print("Chatbot model loaded.")
+    # ——— Load HF LLM + tokenizer
+    hf_model, tokenizer = load_llm_model(model_name)
+    hf_model.to(device)
+    print("Chatbot HF model & tokenizer loaded.")
 
+    # ——— Wrap in RAG system
+    rag_system = RAGConversationSystem(
+        embedding_model_name=sentencetransformer_model_name,
+        tokenizer=tokenizer,
+        llm_model=hf_model,
+        max_history=max_history,
+    )
+    rag_system.load_history()
+    print("RAGConversationSystem initialized.")
+
+    # ——— Load BERT / TTS / RF
     load_bert_model(bert_models_config)
     print("BERT models loaded.")
 
     tts_model = load_tts_model(tts_model_config)
     print("TTS model loaded.")
 
-    beginner_words = read_words_file(beginner_words_filename)
-    intermediate_words = read_words_file(intermediate_words_filename)
-    advanced_words = read_words_file(advanced_words_filename)
-    essential_words = read_words_file(essential_words_filename)
-    print("Word files read for beginner, intermediate, and advanced.")
-
-    try:
-        embedding_model = SentenceTransformer(sentencetransformer_model_name, device=device)
-        print("SentenceTransformer model loaded.")
-    except Exception as e:
-        print(f"Error loading SentenceTransformer model '{sentencetransformer_model_name}': {e}")
-        raise e
-
-    beginner_words = list(set(beginner_words))
-    intermediate_words = list(set(intermediate_words))
-    advanced_words = list(set(advanced_words))
-    print("Duplicates removed from word lists.")
-
-    beginner_embeddings = embedding_model.encode(beginner_words, convert_to_tensor=True)
-    beginner_collection = get_or_create_collection(client, "beginner_embeddings", beginner_words, beginner_embeddings)
-    print("Beginner collection created.")
-
-    intermediate_embeddings = embedding_model.encode(intermediate_words, convert_to_tensor=True)
-    intermediate_collection = get_or_create_collection(client, "intermediate_embeddings", intermediate_words, intermediate_embeddings)
-    print("Intermediate collection created.")
-
-    advanced_embeddings = embedding_model.encode(advanced_words, convert_to_tensor=True)
-    advanced_collection = get_or_create_collection(client, "advanced_embeddings", advanced_words, advanced_embeddings)
-    print("Advanced collection created.")
-
-    crisperwhisper_model, crisperwhisper_processor = load_crisper_model()
+    crisperwhisper_pipe, crisperwhisper_processor = load_crisper_model()
     print("Crisper Whisper pipeline loaded.")
 
     clf = load_rf_model(rf_model)
     print("Classifier model loaded.")
 
-    audio_dir = os.path.join("static", "audio")
-    if not os.path.exists(audio_dir):
-        os.makedirs(audio_dir)
-        print(f"Created audio directory at {audio_dir}")
+    # ——— Word lists + embeddings
+    beginner_words = list(set(read_words_file(beginner_words_filename)))
+    intermediate_words = list(set(read_words_file(intermediate_words_filename)))
+    advanced_words = list(set(read_words_file(advanced_words_filename)))
+    essential_words = read_words_file(essential_words_filename)
+    print("Word files read and deduped.")
 
+    embedding_model = SentenceTransformer(sentencetransformer_model_name, device=device)
+    print("SentenceTransformer model loaded.")
+
+    # ——— Create Chroma collections
+    for name, words in [
+        ("beginner", beginner_words),
+        ("intermediate", intermediate_words),
+        ("advanced", advanced_words),
+    ]:
+        embs = embedding_model.encode(words, convert_to_tensor=True)
+        _ = get_or_create_collection(client, f"{name}_embeddings", words, embs)
+        print(f"{name.capitalize()} collection created.")
+
+    # ——— Ensure audio directory
+    audio_dir = os.path.join("static", "audio")
+    os.makedirs(audio_dir, exist_ok=True)
     print("Initialization complete.")
+
     return {
-        'model': model,
-        'tokenizer': tokenizer,
-        'tts_model': tts_model,
-        'embedding_model': embedding_model,
-        'boost_value': boost_value,
-        'device': device,
-        'crisperwhisper_model': crisperwhisper_model,
-        'crisperwhisper_processor': crisperwhisper_processor,
-        'rf_model': clf,
-        'beginner_collection': beginner_collection,
-        'intermediate_collection': intermediate_collection,
-        'advanced_collection': advanced_collection,
-        'essential_words': essential_words,
+        "model": rag_system,
+        "tokenizer": tokenizer,
+        "tts_model": tts_model,
+        "embedding_model": embedding_model,
+        "boost_value": boost_value,
+        "device": device,
+        "crisperwhisper_pipe": crisperwhisper_pipe,
+        "crisperwhisper_processor": crisperwhisper_processor,
+        "rf_model": clf,
+        "beginner_collection": client.get_collection("beginner_embeddings"),
+        "intermediate_collection": client.get_collection("intermediate_embeddings"),
+        "advanced_collection": client.get_collection("advanced_embeddings"),
+        "essential_words": essential_words,
     }
 
 
