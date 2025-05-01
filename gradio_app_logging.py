@@ -28,6 +28,9 @@ import tempfile
 import numpy as np
 import soundfile as sf
 import openai
+from datetime import datetime
+from gradio import mount_gradio_app
+from pyngrok import ngrok
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -50,126 +53,187 @@ load_app_data()
 
 client = openai.OpenAI(api_key="")
 
+
+def fluency_to_speed(fluency_level):
+    if isinstance(fluency_level, int):
+        if fluency_level == 0:
+            return 0.8
+        elif fluency_level == 1:
+            return 0.9
+    return 1.0
+    
 # Sage or shimmer are the best
-def generate_speech_openai(text, voice="sage", model="tts-1", response_format="mp3"):
+def generate_speech_openai(text, fluency_level, voice="sage", model="tts-1", response_format="wav"):
+    """
+    Calls OpenAI TTS and returns raw bytes in WAV format.
+    """
     try:
         response = client.audio.speech.create(
             model=model,
             voice=voice,
             input=text,
-            response_format=response_format
+            response_format=response_format,
+            speed=fluency_to_speed(fluency_level)
         )
-        return response.content  # bytes
+        return response.content
     except Exception as e:
         print(f"[TTS ERROR] {e}")
         return None
 
 def process_user_audio_openai(audio_np, history):
     global init_data
-    if audio_np is None or not isinstance(audio_np, tuple):
-        return [("System", "No audio received.")], None, "Unknown", history
 
-    sample_rate, audio_array = audio_np
+    print("📥 [START] Submit clicked.")
+    print(f"[DEBUG] raw audio_np: {audio_np!r}")
 
-    # Save user input temporarily
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmpfile:
-        sf.write(tmpfile.name, audio_array, sample_rate)
-        tmp_path = tmpfile.name
+    def safe_return(h, audio, label):
+        if not isinstance(audio, tuple) or len(audio) != 2:
+            print("⚠️ [SAFE_RETURN] Audio output was not a tuple. Fixing.")
+            audio = (None, None)
+
+        sr, data = audio
+        if sr is None or data is None:
+            print("⚠️ [SAFE_RETURN] audio contained None, replacing with silent fallback.")
+            sr = 24000
+            data = np.zeros(1, dtype=np.float32)
+            audio = (sr, data)
+
+        print(f"🧪 [SAFE_RETURN] Returning: sample_rate={sr}, array_shape={data.shape}")
+        return h, audio, label, h
+
+
+    # ─── Normalize FileData ─────────────────────
+    if isinstance(audio_np, dict) and "path" in audio_np:
+        audio_np = audio_np["path"]
+
+    if not (isinstance(audio_np, str) and os.path.exists(audio_np)):
+        print(f"❌ [AUDIO] Invalid input: {audio_np!r}")
+        history = history or []
+        history.append({
+            "role": "assistant",
+            "content": "⚠️ No audio received. Please record again."
+        })
+        return safe_return(history, (None, None), "Unknown")
 
     try:
-        crisperwhisper_model = init_data['crisperwhisper_model']
+        data, sr = sf.read(audio_np)
+    except Exception as e:
+        print(f"❌ [AUDIO] Read error: {e}")
+        history = history or []
+        history.append({
+            "role": "assistant",
+            "content": "⚠️ Could not read your recording. Try again."
+        })
+        return safe_return(history, (None, None), "Unknown")
+
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    save_dir = "saved_user_audio"
+    os.makedirs(save_dir, exist_ok=True)
+    tmp_path = os.path.join(save_dir, f"user_input_{timestamp}.wav")
+
+    try:
+        sf.write(tmp_path, data, sr)
+        print(f"💾 [SAVED] Audio saved to: {tmp_path}")
+
+        cr_model = init_data['crisperwhisper_model']
         processor = init_data['crisperwhisper_processor']
+        user_input, audio_file_path = transcribe_audio(tmp_path, cr_model, processor)
+        print(f"📝 [TRANSCRIPTION] Text: '{user_input}'")
 
-        forest_classifier = init_data['rf_model']
+        syll, sr_feats, ar, asd = calculate_all_features(user_input, audio_file_path)
+        fl = classify_fluency(init_data['rf_model'], sr_feats, ar, asd)
+        fluency_level = int(np.array(fl).item())
+        print(f"📊 [FLUENCY] Level: {fluency_level}")
 
-        user_input, audio_file_path = transcribe_audio(tmp_path, crisperwhisper_model, processor)
-        syll, sr, ar, asd = calculate_all_features(user_input, audio_file_path)
-        fluency_level = classify_fluency(forest_classifier, sr, ar, asd)
-        fluency_level = int(np.array(fluency_level).item())
-
-        # Choose vector DB by fluency
-        level_collections = [
+        vector_collection = [
             init_data.get('beginner_collection'),
             init_data.get('intermediate_collection'),
             init_data.get('advanced_collection')
-        ]
-        vector_collection = level_collections[min(fluency_level, len(level_collections)-1)]
+        ][min(fluency_level, 2)]
 
-        # Load other models
-        model = init_data['model']
-        tokenizer = init_data['tokenizer']
+        model           = init_data['model']
+        tokenizer       = init_data['tokenizer']
         embedding_model = init_data['embedding_model']
         essential_words = init_data['essential_words']
-        boost_value = init_data['boost_value']
-        device = init_data['device']
+        boost_value     = init_data['boost_value']
+        device          = init_data['device']
 
-        # Build prompt with boost
         boost_words = knn_search(user_input, embedding_model, vector_collection) + essential_words
-        logits_processor = create_boost_processor(tokenizer, boost_words, boost_value)
-        stopping_criteria = create_stopping_criteria(tokenizer)
+        logits_proc   = create_boost_processor(tokenizer, boost_words, boost_value)
+        stopping_crit = create_stopping_criteria(tokenizer)
+        system_msg    = build_prompt(boost_words, user_input)
 
-        system_message = build_prompt(boost_words, user_input)
         text_history = "\n".join([
             f"{msg['role'].capitalize()}: {msg['content']}"
-            for msg in history if msg['role'] in ['user', 'assistant']
+            for msg in (history or [])
+            if msg['role'] in ['user', 'assistant']
         ])
-        prompt = f"{system_message}\n{text_history}\nUser: {user_input}\nAssistant:"
-
-        assistant_response = generate_response(
-            model, tokenizer, prompt, logits_processor, stopping_criteria, device
+        prompt = (
+            f"{system_msg}\n"
+            f"{text_history}\n"
+            f"User: {user_input}\n"
+            "Assistant:"
         )
 
-        # Update history
-        if not isinstance(history, list):
-            history = []
-        history.append({"role": "user", "content": user_input})
+        assistant_response = generate_response(
+            model, tokenizer, prompt,
+            logits_proc, stopping_crit, device
+        )
+        print(f"🤖 [RESPONSE] {assistant_response[:80]}...")
+
+        history = history or []
+        history.append({"role": "user",      "content": user_input})
         history.append({"role": "assistant", "content": assistant_response})
 
-        # --- TTS ---
-        audio_bytes = generate_speech_openai(assistant_response)
-        if not audio_bytes:
-            return history, None, fluency_level, history
+        tts_bytes = generate_speech_openai(assistant_response, fluency_level, response_format="wav")
+        if not tts_bytes:
+            print("❌ [TTS] No audio returned.")
+            return safe_return(history, (None, None), fluency_level)
 
-        # Save TTS to temp file and load waveform
-        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tts_file:
-            tts_file.write(audio_bytes)
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tts_file:
+            tts_file.write(tts_bytes)
+            tts_file.flush()
+            os.fsync(tts_file.fileno())
             tts_path = tts_file.name
 
-        # Decode MP3 into waveform
-        audio_output_np, out_sr = sf.read(tts_path, dtype='int16')
+        out_data, out_sr = sf.read(tts_path, dtype='float32')
         os.remove(tts_path)
 
-        # Label fluency level
         fluency_labels = ["Beginner 🟢", "Intermediate 🟡", "Advanced 🔵"]
-        if hasattr(fluency_level, "item"):
-            fluency_level = fluency_level.item()
-        label = fluency_labels[fluency_level] if isinstance(fluency_level, int) and fluency_level < len(fluency_labels) else "Unknown"
+        label = fluency_labels[fluency_level] if 0 <= fluency_level < len(fluency_labels) else "Unknown"
+        print(f"🏷️ [LABEL] {label}")
 
-        # Log everything
         log_interaction(
             session_id="default-session",
             user_input=user_input,
             assistant_response=assistant_response,
             fluency_level=label,
-            audio_path=audio_file_path
+            audio_path=tmp_path
         )
 
-        return history, (out_sr, audio_output_np), label, history
+        print("✅ [DONE]")
+        return safe_return(history, (out_sr, out_data), label)
+
+    except Exception as e:
+        print(f"❌ [PROCESS ERROR] {e}")
+        history = history or []
+        history.append({
+            "role": "assistant",
+            "content": "⚠️ Something went wrong. Please try again."
+        })
+        return safe_return(history, (None, None), "Unknown")
 
     finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+        print("🧹 [CLEANUP] Done processing audio")
 
-# ------------------------------
-# CSS Styling
-# ------------------------------
+
 custom_css = """
 #custom-title {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 1rem;
-    margin-bottom: 2rem;
+    margin-bottom: 0;
     text-align: center;
 }
 
@@ -188,13 +252,23 @@ custom_css = """
     line-height: 1.2;
 }
 
-#response-box {
-    font-size: 1.1rem;
-    line-height: 1.6;
-    max-height: 300px;
-    overflow-y: auto;
-    scroll-behavior: smooth;
+#instructions {
+    text-align: center;
+    font-size: 1.5rem;
+    color: white;
+    margin-top: 0.5rem;
     margin-bottom: 2rem;
+}
+
+#instructions ol {
+    display: inline-block;
+    text-align: left;
+    padding-left: 1.2rem;
+    margin: 0;
+}
+
+#instructions li {
+    margin-bottom: 0.4rem;
 }
 
 .gr-chatbot {
@@ -220,6 +294,7 @@ custom_css = """
 }
 """
 
+
 # ------------------------------
 # Gradio Interface
 # ------------------------------
@@ -229,12 +304,22 @@ with gr.Blocks(css=custom_css) as demo:
             <img src="/static/images/AdaptLingoAvatar.png" alt="Avatar" id="avatar-inline">
             <span>Talk with AdaptLingo!</span>
         </div>
+        <div id="instructions">
+            <ol>
+                <li>In the top box, press "record" and allow microphone access.</li>
+                <li>Speak into the microphone.</li>
+                <li>Press "Submit," and the chatbot will generate a response in the box below.</li>
+                <li>You can replay the speech in the bottom box.</li>
+            </ol>
+        </div>
     """)
+
 
     audio_input = gr.Audio(
         sources=["microphone"],
         label="🎤 Press & Speak",
-        format="wav"
+        format="wav",
+        type="filepath",
     )
     submit_button = gr.Button("🎙️ Submit Speech")
 
@@ -255,31 +340,36 @@ with gr.Blocks(css=custom_css) as demo:
         label="🔊 AdaptLingo Voice",
         interactive=False,
         autoplay=True,
-        type="filepath",
+        type="numpy",
         visible=True,
-        value="static/audio/example.wav"
     )
 
+
     history_state = gr.State(value=[])
+
+    audio_valid = gr.State(False)
+
+    audio_input.change(
+        fn=lambda audio: bool(audio),
+        inputs=[audio_input],
+        outputs=[audio_valid]
+    )
 
     submit_button.click(
         fn=process_user_audio_openai,
         inputs=[audio_input, history_state],
-        outputs=[response_text, audio_output, fluency_label, history_state]
-    ).then(
-        fn=lambda: None,
-        inputs=None,
-        outputs=[audio_input]
+        outputs=[response_text, audio_output, fluency_label, history_state],
+        preprocess=False,
+        queue=True,
     )
+
+
 
 # ------------------------------
 # Server Launch
 # ------------------------------
 if __name__ == "__main__":
-    import argparse
-    import uvicorn
-    from gradio import mount_gradio_app
-    from pyngrok import ngrok
+
 
     parser = argparse.ArgumentParser(description="Launch the AdaptLingo gradio app")
     parser.add_argument("--share", action="store_true", help="Create a public shareable link using ngrok")
@@ -294,6 +384,6 @@ if __name__ == "__main__":
         public_url = ngrok.connect(port)
         print("Public URL:", public_url)
         # Launch the app using uvicorn
-        uvicorn.run(app, host="127.0.0.1", port=port)
+        uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
     else:
         uvicorn.run(app, host="127.0.0.1", port=port)

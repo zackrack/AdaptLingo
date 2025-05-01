@@ -45,7 +45,7 @@ def transcribe_audio(audio_file, model, processor):
         audio_array, sr = sf.read(audio_path)
 
         if len(audio_array.shape) > 1:
-            audio_array = np.mean(audio_array, axis=1)  # Convert stereo to mono
+            audio_array = np.mean(audio_array, axis=1)
 
         if np.max(np.abs(audio_array)) < 1e-4:
             raise ValueError("Audio input is silent or empty.")
