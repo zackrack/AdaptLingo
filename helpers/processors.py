@@ -38,6 +38,24 @@ def create_boost_processor(tokenizer, boost_words, boost_value):
     else:
         return LogitsProcessorList()  # Return an empty processor if no boost words
 
+# class StopAfterNSentences(StoppingCriteria):
+#     def __init__(self, tokenizer, n_sentences=2):
+#         super().__init__()
+#         self.tokenizer = tokenizer
+#         self.n_sentences = n_sentences
+#         self.sentence_count = 0
+
+#     def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs):
+#         text = self.tokenizer.decode(input_ids[0], skip_special_tokens=True)
+#         # Count number of sentence enders
+#         self.sentence_count = text.count('.') + text.count('!') + text.count('?')
+#         return self.sentence_count >= self.n_sentences
+
+# def create_stopping_criteria(tokenizer):
+#     return StoppingCriteriaList([
+#         StopAfterNSentences(tokenizer, n_sentences=2)
+#     ])
+
 def create_stopping_criteria(tokenizer):
     stop_sequences = [
         tokenizer.encode("User:", add_special_tokens=False),

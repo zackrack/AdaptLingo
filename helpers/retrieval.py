@@ -13,7 +13,7 @@ def knn_search(prompt, embedding_model, collection):
     documents = data['documents']
 
     # l1 ball tree might be good
-    knn = NearestNeighbors(n_neighbors=40, metric='l1', algorithm='ball_tree')
+    knn = NearestNeighbors(n_neighbors=10, metric='l1', algorithm='ball_tree')
     knn.fit(embeddings)
 
     # Compute nearest neighbors
@@ -21,7 +21,7 @@ def knn_search(prompt, embedding_model, collection):
 
     # Retrieve words from indices
     retrieved_words = [documents[i] for i in indices[0]]
-
+    print("Retrieved words: ", retrieved_words)
     return retrieved_words
 
 

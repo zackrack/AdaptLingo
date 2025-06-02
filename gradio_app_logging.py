@@ -51,8 +51,7 @@ def load_app_data():
 
 load_app_data()
 
-client = openai.OpenAI(api_key="")
-
+client = openai.OpenAI(api_key="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")
 
 def fluency_to_speed(fluency_level):
     if isinstance(fluency_level, int):
@@ -63,43 +62,60 @@ def fluency_to_speed(fluency_level):
     return 1.0
     
 # Sage or shimmer are the best
-def generate_speech_openai(text, fluency_level, voice="sage", model="tts-1", response_format="wav"):
+
+def generate_speech_openai(text, fluency_level, voice="shimmer", model="tts-1", response_format="wav"):
     """
-    Calls OpenAI TTS and returns raw bytes in WAV format.
+    Calls OpenAI TTS and returns raw bytes in WAV format, with detailed logging and error tracing.
     """
     try:
+        speed = {0: 0.8, 1: 0.9, 2: 1.0}.get(fluency_level, 1.0)
+        # print(f"[TTS] Requesting OpenAI voice: {voice}, speed={speed}, input='{text[:60]}...'")
+
         response = client.audio.speech.create(
             model=model,
             voice=voice,
             input=text,
             response_format=response_format,
-            speed=fluency_to_speed(fluency_level)
+            speed=speed
         )
+
+        if not hasattr(response, "content") or not response.content:
+            raise ValueError("OpenAI TTS response missing audio content.")
+
+        # print(f"[TTS] Received {len(response.content)} bytes of audio")
         return response.content
+
     except Exception as e:
-        print(f"[TTS ERROR] {e}")
+        print(f"❌ [TTS ERROR] {e}")
         return None
 
 def process_user_audio_openai(audio_np, history):
     global init_data
 
-    print("📥 [START] Submit clicked.")
-    print(f"[DEBUG] raw audio_np: {audio_np!r}")
+    # print("📥 [START] Submit clicked.")
+    # print(f"[DEBUG] raw audio_np: {audio_np!r}")
 
-    def safe_return(h, audio, label):
+    def safe_return(history, audio, label):
         if not isinstance(audio, tuple) or len(audio) != 2:
-            print("⚠️ [SAFE_RETURN] Audio output was not a tuple. Fixing.")
+            # print("⚠️ [SAFE_RETURN] Audio output was not a tuple. Fixing.")
             audio = (None, None)
 
         sr, data = audio
         if sr is None or data is None:
-            print("⚠️ [SAFE_RETURN] audio contained None, replacing with silent fallback.")
+            # print("⚠️ [SAFE_RETURN] audio contained None, replacing with silent fallback.")
             sr = 24000
             data = np.zeros(1, dtype=np.float32)
             audio = (sr, data)
 
-        print(f"🧪 [SAFE_RETURN] Returning: sample_rate={sr}, array_shape={data.shape}")
-        return h, audio, label, h
+        # print(f"🧪 [SAFE_RETURN] Returning: sample_rate={sr}, array_shape={data.shape}")
+        
+        new_history = history
+        print("🧾 [DEBUG] History length:", len(history))
+        for i, msg in enumerate(history):
+            print(f"   {i+1}. [{msg['role']}] {msg['content'][:60]}")
+        print("📤 [RETURN] Chatbot update keys:", [msg['role'] for msg in history])
+        # Send `history` to both Chatbot and State
+        return new_history, audio, label, new_history
 
 
     # ─── Normalize FileData ─────────────────────
@@ -108,7 +124,9 @@ def process_user_audio_openai(audio_np, history):
 
     if not (isinstance(audio_np, str) and os.path.exists(audio_np)):
         print(f"❌ [AUDIO] Invalid input: {audio_np!r}")
-        history = history or []
+        if history is None:
+            history = []
+
         history.append({
             "role": "assistant",
             "content": "⚠️ No audio received. Please record again."
@@ -119,7 +137,8 @@ def process_user_audio_openai(audio_np, history):
         data, sr = sf.read(audio_np)
     except Exception as e:
         print(f"❌ [AUDIO] Read error: {e}")
-        history = history or []
+        if history is None:
+            history = []
         history.append({
             "role": "assistant",
             "content": "⚠️ Could not read your recording. Try again."
@@ -133,17 +152,19 @@ def process_user_audio_openai(audio_np, history):
 
     try:
         sf.write(tmp_path, data, sr)
-        print(f"💾 [SAVED] Audio saved to: {tmp_path}")
+        # print(f"💾 [SAVED] Audio saved to: {tmp_path}")
 
         cr_model = init_data['crisperwhisper_model']
         processor = init_data['crisperwhisper_processor']
         user_input, audio_file_path = transcribe_audio(tmp_path, cr_model, processor)
-        print(f"📝 [TRANSCRIPTION] Text: '{user_input}'")
+        # print(f"📝 [TRANSCRIPTION] Text: '{user_input}'")
 
         syll, sr_feats, ar, asd = calculate_all_features(user_input, audio_file_path)
         fl = classify_fluency(init_data['rf_model'], sr_feats, ar, asd)
         fluency_level = int(np.array(fl).item())
-        print(f"📊 [FLUENCY] Level: {fluency_level}")
+        # print(f"📊 [FLUENCY] Level: {fluency_level}")
+
+        
 
         vector_collection = [
             init_data.get('beginner_collection'),
@@ -158,10 +179,16 @@ def process_user_audio_openai(audio_np, history):
         boost_value     = init_data['boost_value']
         device          = init_data['device']
 
-        boost_words = knn_search(user_input, embedding_model, vector_collection) + essential_words
+        # boost_words = knn_search(user_input, embedding_model, vector_collection) + essential_words
+        boost_words = knn_search(user_input, embedding_model, vector_collection)
         logits_proc   = create_boost_processor(tokenizer, boost_words, boost_value)
         stopping_crit = create_stopping_criteria(tokenizer)
-        system_msg    = build_prompt(boost_words, user_input)
+
+        fluency_labels = ["Beginner 🟢", "Intermediate 🟡", "Advanced 🔵"]
+        label = fluency_labels[fluency_level] if 0 <= fluency_level < len(fluency_labels) else "Unknown"
+        print(f"🏷️ [LABEL] {label}")
+
+        system_msg    = build_prompt(boost_words, user_input, label)
 
         text_history = "\n".join([
             f"{msg['role'].capitalize()}: {msg['content']}"
@@ -179,11 +206,23 @@ def process_user_audio_openai(audio_np, history):
             model, tokenizer, prompt,
             logits_proc, stopping_crit, device
         )
-        print(f"🤖 [RESPONSE] {assistant_response[:80]}...")
+        # print(f"🤖 [RESPONSE] {assistant_response[:80]}...")
 
-        history = history or []
-        history.append({"role": "user",      "content": user_input})
-        history.append({"role": "assistant", "content": assistant_response})
+        if history is None:
+            history = []
+
+        new_history = history + [
+            {"role": "user", "content": user_input},
+            {"role": "assistant", "content": assistant_response},
+        ]
+
+        print("📚 [NEW_HISTORY] Created with", len(new_history), "entries")
+        print("🔗 [ID] Old history:", id(history), "→ New history:", id(new_history))
+
+        for i, msg in enumerate(new_history):
+            print(f"   {i+1}. [{msg['role']}] {msg['content'][:60]}")
+
+
 
         tts_bytes = generate_speech_openai(assistant_response, fluency_level, response_format="wav")
         if not tts_bytes:
@@ -199,10 +238,6 @@ def process_user_audio_openai(audio_np, history):
         out_data, out_sr = sf.read(tts_path, dtype='float32')
         os.remove(tts_path)
 
-        fluency_labels = ["Beginner 🟢", "Intermediate 🟡", "Advanced 🔵"]
-        label = fluency_labels[fluency_level] if 0 <= fluency_level < len(fluency_labels) else "Unknown"
-        print(f"🏷️ [LABEL] {label}")
-
         log_interaction(
             session_id="default-session",
             user_input=user_input,
@@ -212,11 +247,13 @@ def process_user_audio_openai(audio_np, history):
         )
 
         print("✅ [DONE]")
-        return safe_return(history, (out_sr, out_data), label)
+        return safe_return(new_history, (out_sr, out_data), label)
 
     except Exception as e:
         print(f"❌ [PROCESS ERROR] {e}")
-        history = history or []
+        if history is None:
+            history = []
+
         history.append({
             "role": "assistant",
             "content": "⚠️ Something went wrong. Please try again."
@@ -306,22 +343,33 @@ with gr.Blocks(css=custom_css) as demo:
         </div>
         <div id="instructions">
             <ol>
-                <li>In the top box, press "record" and allow microphone access.</li>
-                <li>Speak into the microphone.</li>
-                <li>Press "Submit," and the chatbot will generate a response in the box below.</li>
-                <li>You can replay the speech in the bottom box.</li>
+                <li>In the left side of the top box, press "Record" and allow microphone access from your browser.</li>
+                <li>Speak into your microphone, and press "Stop" when done.</li>
+                <li>Press "Submit Speech," and the chatbot will generate a response in the box below.</li>
+                <li>You can replay your speech in the top box and the chatbot's speech from the bottom box.</li>
+                <li>To send a new message, click the "X" in the top right of the top box, then resume from step 1.</li>
             </ol>
         </div>
     """)
 
 
+    def update_submit_button_visibility(audio):
+        is_valid = bool(audio)
+        return is_valid, gr.update(visible=is_valid)
+
+    # States
+    audio_valid = gr.State(False)
+    history_state = gr.State([])
+
+    # Components
     audio_input = gr.Audio(
         sources=["microphone"],
         label="🎤 Press & Speak",
         format="wav",
-        type="filepath",
+        type="filepath"
     )
-    submit_button = gr.Button("🎙️ Submit Speech")
+
+    submit_button = gr.Button("🎙️ Submit Speech", visible=False)
 
     fluency_label = gr.Label(
         label="🧠 Fluency Level",
@@ -332,38 +380,33 @@ with gr.Blocks(css=custom_css) as demo:
     response_text = gr.Chatbot(
         label="💬 AdaptLingo Chat",
         elem_id="response-box",
-        type="messages"
+        type="messages",
+        autoscroll=True
     )
-
 
     audio_output = gr.Audio(
         label="🔊 AdaptLingo Voice",
         interactive=False,
         autoplay=True,
         type="numpy",
-        visible=True,
+        visible=True
     )
 
-
-    history_state = gr.State(value=[])
-
-    audio_valid = gr.State(False)
-
+    # Audio input change triggers button reveal and updates audio_valid
     audio_input.change(
-        fn=lambda audio: bool(audio),
+        fn=update_submit_button_visibility,
         inputs=[audio_input],
-        outputs=[audio_valid]
+        outputs=[audio_valid, submit_button],
+        show_progress=False
     )
 
+    # Submit button click runs the full pipeline
     submit_button.click(
         fn=process_user_audio_openai,
         inputs=[audio_input, history_state],
         outputs=[response_text, audio_output, fluency_label, history_state],
-        preprocess=False,
-        queue=True,
+        queue=True
     )
-
-
 
 # ------------------------------
 # Server Launch
