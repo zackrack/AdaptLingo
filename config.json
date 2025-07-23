@@ -4,7 +4,7 @@
     "intermediate_words_filename": "words/intermediate_words.txt",
     "advanced_words_filename": "words/advanced_words.txt",
     "essential_words_filename": "words/essential_words.txt",
-    "boost_value": 2.0,
+    "boost_value": 5,
     "sentencetransformer_model": "all-mpnet-base-v2",
     "whisper_model": "base",
     "bert_models": {

@@ -31,10 +31,10 @@ def initialize():
     tts_model_config = config.get('tts_model')
     rf_model = config.get("classifier_model")
 
-    nltk_data_path = os.path.expanduser('~/nltk_data')
+    nltk_data_path = os.path.expanduser('local/data/zcr2105/nltk_data')
     if not os.path.exists(nltk_data_path):
-        os.makedirs(nltk_data_path)
-        print(f"Created NLTK data directory at {nltk_data_path}")
+       os.makedirs(nltk_data_path)
+       print(f"Created NLTK data directory at {nltk_data_path}")
     nltk.data.path.append(nltk_data_path)
     print("NLTK data path set.")
 

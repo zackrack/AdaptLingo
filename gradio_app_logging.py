@@ -31,6 +31,7 @@ import openai
 from datetime import datetime
 from gradio import mount_gradio_app
 from pyngrok import ngrok
+import time
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -51,7 +52,7 @@ def load_app_data():
 
 load_app_data()
 
-client = openai.OpenAI(api_key="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")
+client = openai.OpenAI(api_key="")
 
 def fluency_to_speed(fluency_level):
     if isinstance(fluency_level, int):
@@ -63,7 +64,7 @@ def fluency_to_speed(fluency_level):
     
 # Sage or shimmer are the best
 
-def generate_speech_openai(text, fluency_level, voice="shimmer", model="tts-1", response_format="wav"):
+def generate_speech_openai(text, fluency_level, voice="nova", model="gpt-4o-mini-tts", response_format="wav"):
     """
     Calls OpenAI TTS and returns raw bytes in WAV format, with detailed logging and error tracing.
     """
@@ -89,8 +90,47 @@ def generate_speech_openai(text, fluency_level, voice="shimmer", model="tts-1", 
         print(f"❌ [TTS ERROR] {e}")
         return None
 
+def classify_sentence_toxicity(sentence: str) -> str:
+    """
+    Classifies a single sentence as 'toxic' or 'non-toxic'.
+    
+    Args:
+        sentence (str): The input sentence to classify.
+    
+    Returns:
+        str: The classification result ('toxic' or 'non-toxic').
+    """
+    try:
+        # Define the system prompt
+        system_message = (
+            "You are a helpful assistant trained to classify text in any language as either 'toxic' or 'non-toxic'. "
+            "If the text contains hateful, abusive, obscene, sexual, discriminatory, violent, illegal, or harmful language, classify it as 'toxic'. The text must be appropriate for a 12 year-old to read."
+            "Otherwise, classify it as 'non-toxic'. Provide only one word: 'toxic' or 'non-toxic'."
+        )
+
+        # Call OpenAI's ChatCompletion endpoint
+        response = client.chat.completions.create(
+            model="gpt-4o-mini-2024-07-18",  # Replace with the desired model
+            messages=[
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": sentence},
+            ],
+            max_tokens=5,  # Minimal tokens since we only need "toxic" or "non-toxic"
+            temperature=0,
+        )
+
+        # Extract and return the classification
+        classification = response.choices[0].message.content.strip()
+        print("toxic sentence: ", classification)
+        return classification
+    except Exception as e:
+        print(f"Error classifying sentence: {sentence}\nError: {e}\n")
+        return "Error"
+
+
 def process_user_audio_openai(audio_np, history):
     global init_data
+    print("🚦 [START] process_user_audio_openai called", flush=True)
 
     # print("📥 [START] Submit clicked.")
     # print(f"[DEBUG] raw audio_np: {audio_np!r}")
@@ -115,6 +155,7 @@ def process_user_audio_openai(audio_np, history):
             print(f"   {i+1}. [{msg['role']}] {msg['content'][:60]}")
         print("📤 [RETURN] Chatbot update keys:", [msg['role'] for msg in history])
         # Send `history` to both Chatbot and State
+        time.sleep(0.2)
         return new_history, audio, label, new_history
 
 
@@ -157,14 +198,23 @@ def process_user_audio_openai(audio_np, history):
         cr_model = init_data['crisperwhisper_model']
         processor = init_data['crisperwhisper_processor']
         user_input, audio_file_path = transcribe_audio(tmp_path, cr_model, processor)
+
+        # Check for toxicity
+        toxicity_result = classify_sentence_toxicity(user_input)
+        if toxicity_result.lower() == "toxic":
+            print("🚫 [TOXICITY] Input was flagged as toxic.")
+            history.append({
+                "role": "assistant",
+                "content": "⚠️ Your message was flagged as inappropriate. Please try again with respectful language."
+            })
+            return safe_return(history, (None, None), "Flagged")
+
         # print(f"📝 [TRANSCRIPTION] Text: '{user_input}'")
 
         syll, sr_feats, ar, asd = calculate_all_features(user_input, audio_file_path)
         fl = classify_fluency(init_data['rf_model'], sr_feats, ar, asd)
         fluency_level = int(np.array(fl).item())
         # print(f"📊 [FLUENCY] Level: {fluency_level}")
-
-        
 
         vector_collection = [
             init_data.get('beginner_collection'),
@@ -201,12 +251,27 @@ def process_user_audio_openai(audio_np, history):
             f"User: {user_input}\n"
             "Assistant:"
         )
+        print("🧠 [GENERATION] Prompt ready. Calling generate_response...", flush=True)
+        print(f"🧾 [PROMPT HEAD] {prompt[:300]}...", flush=True)
 
         assistant_response = generate_response(
             model, tokenizer, prompt,
             logits_proc, stopping_crit, device
         )
         # print(f"🤖 [RESPONSE] {assistant_response[:80]}...")
+
+        # 🧪 Check assistant output for toxicity
+        toxicity_result = classify_sentence_toxicity(assistant_response)
+        if toxicity_result.lower() == "toxic":
+            print("🚫 [TOXICITY] Assistant response flagged as toxic.")
+            history.append({
+                "role": "assistant",
+                "content": "⚠️ Something went wrong generating a safe response. Please try again."
+            })
+            return safe_return(history, (None, None), "Flagged")
+
+        print("🤖 [GENERATION DONE] Assistant response received.", flush=True)
+        print(f"📤 [RESPONSE HEAD] {assistant_response[:300]}", flush=True)
 
         if history is None:
             history = []
@@ -247,6 +312,11 @@ def process_user_audio_openai(audio_np, history):
         )
 
         print("✅ [DONE]")
+        print("🧩 [DEBUG] Preparing return payload...", flush=True)
+        print(f"🔊 [AUDIO] Output sample rate: {out_sr}, shape: {out_data.shape}", flush=True)
+        print(f"📦 [RETURN LABEL] {label}", flush=True)
+        print("🔚 [RETURNING from process_user_audio_openai]", flush=True)
+
         return safe_return(new_history, (out_sr, out_data), label)
 
     except Exception as e:
@@ -345,7 +415,7 @@ with gr.Blocks(css=custom_css) as demo:
             <ol>
                 <li>In the left side of the top box, press "Record" and allow microphone access from your browser.</li>
                 <li>Speak into your microphone, and press "Stop" when done.</li>
-                <li>Press "Submit Speech," and the chatbot will generate a response in the box below.</li>
+                <li>Press "Submit Speech," and the chatbot will generate a response in the box below. It may take several seconds.</li>
                 <li>You can replay your speech in the top box and the chatbot's speech from the bottom box.</li>
                 <li>To send a new message, click the "X" in the top right of the top box, then resume from step 1.</li>
             </ol>
@@ -406,7 +476,7 @@ with gr.Blocks(css=custom_css) as demo:
         inputs=[audio_input, history_state],
         outputs=[response_text, audio_output, fluency_label, history_state],
         queue=True
-    )
+        )
 
 # ------------------------------
 # Server Launch
