@@ -220,7 +220,6 @@ with gr.Blocks(css=custom_css) as demo:
         autoplay=True,
         type="filepath",
         visible=True,
-        value="static/audio/example.wav"
     )
 
     history_state = gr.State(value=[])
