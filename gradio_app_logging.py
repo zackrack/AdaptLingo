@@ -52,7 +52,8 @@ def load_app_data():
 
 load_app_data()
 
-client = openai.OpenAI(api_key="")
+openai.api_key = os.getenv("OPENAI_API_KEY")
+client = openai.OpenAI(api_key=api_key)
 
 def fluency_to_speed(fluency_level):
     if isinstance(fluency_level, int):
