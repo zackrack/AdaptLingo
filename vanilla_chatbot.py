@@ -184,18 +184,18 @@ with gr.Blocks(css=custom_css) as demo:
     fluency_label = gr.Label(
         label="🧠 Fluency Level",
         visible=False,
-        value="N/A (control bot)"
+        value="N/A (Bot B)"
     )
 
     response_text = gr.Chatbot(
-        label="💬 Control Chatbot",
+        label="💬 Bot B",
         elem_id="response-box",
         type="messages",
         autoscroll=True
     )
 
     audio_output = gr.Audio(
-        label="🔊 Control Bot Voice",
+        label="🔊 Bot B Voice",
         interactive=False,
         autoplay=True,
         type="numpy",
