@@ -436,7 +436,7 @@ with gr.Blocks(css=custom_css) as demo:
     gr.HTML("""
         <div id="custom-title">
             <img src="/static/images/AdaptLingoAvatar.png" alt="Avatar" id="avatar-inline">
-            <span>Talk with AdaptLingo!</span>
+            <span>Talk with Bot A!</span>
         </div>
         <div id="instructions">
             <ol>
