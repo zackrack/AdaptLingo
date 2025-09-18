@@ -39,6 +39,33 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 os.environ['TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD'] = '1'
 
 # ------------------------------
+# NEW: Global state for Prolific ID
+# ------------------------------
+CURRENT_PROLIFIC_ID = "UNKNOWN"
+
+def capture_prolific_id(request: gr.Request):
+    """
+    Capture Prolific ID from ?PROLIFIC_PID=xxx in URL.
+    """
+    global CURRENT_PROLIFIC_ID
+    pid = request.query_params.get("PROLIFIC_PID", "UNKNOWN")
+    CURRENT_PROLIFIC_ID = pid
+    print(f"✅ Prolific ID captured: {pid}")
+    return f"Prolific ID: {pid}"
+
+def log_with_pid(user_input, assistant_response, fluency_level, audio_path):
+    """
+    Wrapper for logger.log_interaction that injects Prolific ID.
+    """
+    log_interaction(
+        session_id=CURRENT_PROLIFIC_ID,
+        user_input=user_input,
+        assistant_response=assistant_response,
+        fluency_level=fluency_level,
+        audio_path=audio_path
+    )
+
+# ------------------------------
 # Global initialization and state
 # ------------------------------
 init_data = {}
@@ -190,7 +217,7 @@ def process_user_audio_openai(audio_np, history):
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     save_dir = "saved_user_audio"
     os.makedirs(save_dir, exist_ok=True)
-    tmp_path = os.path.join(save_dir, f"user_input_{timestamp}.wav")
+    tmp_path = os.path.join(save_dir, f"{CURRENT_PROLIFIC_ID}_user_input_{timestamp}.wav")
 
     try:
         sf.write(tmp_path, data, sr)
@@ -304,8 +331,7 @@ def process_user_audio_openai(audio_np, history):
         out_data, out_sr = sf.read(tts_path, dtype='float32')
         os.remove(tts_path)
 
-        log_interaction(
-            session_id="default-session",
+        log_with_pid(
             user_input=user_input,
             assistant_response=assistant_response,
             fluency_level=label,
@@ -423,10 +449,17 @@ with gr.Blocks(css=custom_css) as demo:
         </div>
     """)
 
-
+    pid_banner = gr.Markdown("Waiting for Prolific ID...", visible=False)    
+    
     def update_submit_button_visibility(audio):
         is_valid = bool(audio)
         return is_valid, gr.update(visible=is_valid)
+
+    demo.load(
+        fn=capture_prolific_id,
+        inputs=None,
+        outputs=[pid_banner]
+    )
 
     # States
     audio_valid = gr.State(False)
