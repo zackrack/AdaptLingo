@@ -482,14 +482,14 @@ with gr.Blocks(css=custom_css) as demo:
     )
 
     response_text = gr.Chatbot(
-        label="💬 AdaptLingo Chat",
+        label="💬 Bot A Chat",
         elem_id="response-box",
         type="messages",
         autoscroll=True
     )
 
     audio_output = gr.Audio(
-        label="🔊 AdaptLingo Voice",
+        label="🔊 Bot A Voice",
         interactive=False,
         autoplay=True,
         type="numpy",
