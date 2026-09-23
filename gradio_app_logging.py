@@ -336,12 +336,6 @@ with gr.Blocks(css=custom_css) as demo:
 
     submit_button = gr.Button("🎙️ Submit Speech", visible=False)
 
-    fluency_label = gr.Label(
-        label="🧠 Fluency Level",
-        visible=True,
-        value="Waiting for speech..."
-    )
-
     response_text = gr.Chatbot(
         label="💬 AdaptLingo Chat",
         elem_id="response-box",
@@ -355,6 +349,12 @@ with gr.Blocks(css=custom_css) as demo:
         autoplay=True,
         type="numpy",
         visible=True
+    )
+
+    fluency_label = gr.Label(
+        label="🧠 Fluency Level",
+        visible=True,
+        value="Waiting for speech..."
     )
 
     # Audio input change triggers button reveal and updates audio_valid
