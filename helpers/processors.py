@@ -15,11 +15,14 @@ class StopOnTokens(StoppingCriteria):
     def __init__(self, stop_sequences):
         super().__init__()
         self.stop_sequences = stop_sequences  # List of token ID sequences
+        self._stop_tensors = None  # Built on first call, on the generation device
 
     def __call__(self, input_ids, scores, **kwargs):
-        for stop_seq in self.stop_sequences:
+        if self._stop_tensors is None or self._stop_tensors[0].device != input_ids.device:
+            self._stop_tensors = [torch.tensor(seq, device=input_ids.device) for seq in self.stop_sequences]
+        for stop_seq in self._stop_tensors:
             if len(input_ids[0]) >= len(stop_seq):
-                if torch.equal(input_ids[0][-len(stop_seq):], torch.tensor(stop_seq).to(input_ids.device)):
+                if torch.equal(input_ids[0][-len(stop_seq):], stop_seq):
                     return True
         return False
 

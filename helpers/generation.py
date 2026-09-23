@@ -66,12 +66,11 @@ def generate_response(model, tokenizer, prompt, logits_processor, stopping_crite
     Generates a response from the model using the provided prompt, logits processor,
     and stopping criteria.
     """
-    input_ids = tokenizer(prompt, return_tensors="pt").input_ids.to(device)
     inputs = tokenizer(prompt, return_tensors="pt").to(device)
 
     with torch.no_grad():
         outputs = model.generate(
-            input_ids,
+            inputs["input_ids"],
             attention_mask=inputs["attention_mask"],  # Add the attention mask here
             max_new_tokens=50,
             do_sample=True,

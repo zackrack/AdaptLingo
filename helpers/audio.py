@@ -40,8 +40,14 @@ def transcribe_audio(audio_file, model):
 import re
 from transformers import pipeline
 
-# Grammar correction model
-fixer = pipeline("text2text-generation", model="vennify/t5-base-grammar-correction")
+# Grammar correction model, loaded on first use (only smart_space_recover needs it)
+_fixer = None
+
+def _get_fixer():
+    global _fixer
+    if _fixer is None:
+        _fixer = pipeline("text2text-generation", model="vennify/t5-base-grammar-correction")
+    return _fixer
 
 # Filler word list
 filler_words = {"uh": 1, "um": 1, "ah": 1, "er": 1, "hmm": 1, "mmm": 1, "oh": 1, "eh": 1, "yeah": 1}
@@ -69,7 +75,7 @@ def smart_space_recover(text):
 
     # Step 2: Grammar correction
     prompt = f"grammar: {prepped}"
-    result = fixer(prompt, max_length=128, clean_up_tokenization_spaces=True)[0]['generated_text']
+    result = _get_fixer()(prompt, max_length=128, clean_up_tokenization_spaces=True)[0]['generated_text']
 
     # Step 3: Re-tag fillers (optional)
     final = postprocess_fillers(result)

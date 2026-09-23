@@ -58,7 +58,7 @@ def initialize(load_local_tts=True):
 
     print("ChromaDB client initialized.")
 
-    model, tokenizer = load_llm_model(model_name)
+    model, tokenizer = load_llm_model(model_name, load_in_4bit=config.get('load_in_4bit', True))
     model.to(device)
     print("Chatbot model loaded.")
 

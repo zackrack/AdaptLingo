@@ -62,27 +62,34 @@ def load_bert_model(bert_models_config):
             raise e
     print("All BERT models and tokenizers loaded successfully.")
 
-def load_llm_model(base_model_name):
+def load_llm_model(base_model_name, load_in_4bit=True):
     """
     Loads the main chatbot model (LLM) with optional quantization for memory optimization.
     Detects model type and configures the appropriate tokenizer.
     """
 
-    # Configure 4-bit quantization for memory optimization
-    quantization_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_use_double_quant=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.bfloat16
-    )
-
-    # Load the base model with quantization
-    model = AutoModelForCausalLM.from_pretrained(
-        base_model_name,
-        quantization_config=quantization_config,
-        trust_remote_code=True, 
-        device_map={"":0}
-    )
+    if load_in_4bit:
+        # Configure 4-bit quantization for memory optimization
+        quantization_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.bfloat16
+        )
+        model = AutoModelForCausalLM.from_pretrained(
+            base_model_name,
+            quantization_config=quantization_config,
+            trust_remote_code=True,
+            device_map={"":0}
+        )
+    else:
+        # Unquantized bf16 is much faster to generate with than bitsandbytes 4-bit
+        model = AutoModelForCausalLM.from_pretrained(
+            base_model_name,
+            torch_dtype=torch.bfloat16,
+            trust_remote_code=True,
+            device_map={"":0}
+        )
 
     # **Check model type to determine tokenizer settings**
     model_type = model.config.model_type.lower()  # Get model type from config

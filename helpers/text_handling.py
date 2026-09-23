@@ -12,7 +12,7 @@ def read_words_file(filename):
     
     return words_list
 
-def build_prompt(boost_words, user_input, fluency_label):
+def build_prompt(boost_words, user_input, fluency_label, include_turn=True):
     system_message = f"""You are AdaptLingo, an English conversation partner who converses with English learners.
     The user will practice a conversation in English with you.
     Answer the following user's questions in two sentences, and no more than two sentences. 
@@ -23,6 +23,9 @@ def build_prompt(boost_words, user_input, fluency_label):
     Please use the following words to the best of your ability: {', '.join(boost_words)}.
     The user's English proficiency level is {fluency_label}. Please adapt your grammar to be at the {fluency_label} level.
     You do not need to use all of the words."""
+
+    if not include_turn:
+        return system_message
 
     # Construct the final prompt
     return f"{system_message}\n\nUser: {user_input}\nAssistant:"
