@@ -338,7 +338,7 @@ with gr.Blocks(css=custom_css) as demo:
 
     fluency_label = gr.Label(
         label="🧠 Fluency Level",
-        visible=False,
+        visible=True,
         value="Waiting for speech..."
     )
 
