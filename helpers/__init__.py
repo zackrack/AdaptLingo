@@ -1,7 +1,7 @@
 # helpers/__init__.py
 
 from .models import load_bert_model, load_llm_model, load_tts_model, load_crisper_model, load_rf_model
-from .generation import generate_speech_from_text, generate_response
+from .generation import generate_speech_from_text, generate_response, generate_chat_response
 from .processors import BoostLogitsProcessor, StopOnTokens, create_boost_processor, create_stopping_criteria
 from .retrieval import knn_search, get_or_create_collection
 from .text_handling import read_words_file, build_prompt
@@ -14,6 +14,7 @@ __all__ = [
     "load_tts_model",               # Load the TTS model for generating English speech
     "generate_speech_from_text",    # Generate speech from text
     "generate_response",            # Generate the chatbot response
+    "generate_chat_response",       # Generate the chatbot response using the chat template
     "BoostLogitsProcessor",         # Custom logits processor for boosting specific token probabilities
     "StopOnTokens",                 # Custom stopping criteria for token-based stopping
     "create_boost_processor",       # Helper for creating the boost processor

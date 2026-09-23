@@ -11,7 +11,7 @@ from helpers import (
     create_stopping_criteria,
     knn_search,
     build_prompt,
-    generate_response,
+    generate_chat_response,
     load_initial_data,
     transcribe_audio,
     classify_fluency
@@ -70,8 +70,8 @@ def warmup():
         for key in ('beginner_collection', 'intermediate_collection', 'advanced_collection'):
             knn_search("hello there", init_data['embedding_model'], init_data[key])
 
-        generate_response(
-            init_data['model'], init_data['tokenizer'], "User: Hello!\nAssistant:",
+        generate_chat_response(
+            init_data['model'], init_data['tokenizer'], [{"role": "user", "content": "Hello!"}],
             create_boost_processor(init_data['tokenizer'], [], 0), stopping_criteria,
             init_data['device']
         )
@@ -185,22 +185,20 @@ def process_user_audio_openai(audio_np, history):
 
         system_msg = build_prompt(boost_words, user_input, label, include_turn=False)
 
-        text_history = "\n".join([
-            f"{msg['role'].capitalize()}: {msg['content']}"
-            for msg in history
-            if msg['role'] in ['user', 'assistant']
-        ])
-        prompt = (
-            f"{system_msg}\n\n"
-            + (f"{text_history}\n" if text_history else "")
-            + f"User: {user_input}\n"
-            "Assistant:"
+        messages = (
+            [{"role": "system", "content": system_msg}]
+            + [
+                {"role": msg['role'], "content": msg['content']}
+                for msg in history
+                if msg['role'] in ['user', 'assistant']
+            ]
+            + [{"role": "user", "content": user_input}]
         )
         record_timing("prompt_setup", prompt_started_at)
 
         generation_started_at = time.perf_counter()
-        assistant_response = generate_response(
-            model, tokenizer, prompt,
+        assistant_response = generate_chat_response(
+            model, tokenizer, messages,
             logits_proc, stopping_criteria, device
         )
         record_timing("llm_generation", generation_started_at)

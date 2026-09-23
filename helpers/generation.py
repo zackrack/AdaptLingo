@@ -87,3 +87,40 @@ def generate_response(model, tokenizer, prompt, logits_processor, stopping_crite
     if match:
         assistant_response = assistant_response[:match.start()]
     return assistant_response.strip()
+
+def clean_response(text, max_sentences=2):
+    """
+    Safety net for small models: drop meta-commentary like "(Note: ...)",
+    anything after a blank line or a new speaker tag, and extra sentences.
+    """
+    text = re.split(r'\n\s*\n|\(\s*Note\b|\bNote:|User:|Assistant:', text, flags=re.IGNORECASE)[0]
+    text = " ".join(text.split())
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+    return " ".join(sentences[:max_sentences]).strip()
+
+
+def generate_chat_response(model, tokenizer, messages, logits_processor, stopping_criteria, device):
+    """
+    Generates a response using the model's chat template, where messages is a list of
+    {"role": "system" | "user" | "assistant", "content": str} dicts.
+    """
+    input_ids = tokenizer.apply_chat_template(
+        messages, add_generation_prompt=True, return_tensors="pt"
+    ).to(device)
+
+    with torch.no_grad():
+        outputs = model.generate(
+            input_ids,
+            attention_mask=torch.ones_like(input_ids),
+            max_new_tokens=50,
+            do_sample=True,
+            temperature=0.2,
+            pad_token_id=tokenizer.eos_token_id,
+            logits_processor=logits_processor,
+            stopping_criteria=stopping_criteria
+        )
+
+    # Decode only the newly generated tokens (the template adds special tokens,
+    # so slicing the decoded text by prompt length would be wrong)
+    new_tokens = outputs[0][input_ids.shape[-1]:]
+    return clean_response(tokenizer.decode(new_tokens, skip_special_tokens=True))
