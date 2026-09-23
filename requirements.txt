@@ -18,7 +18,7 @@ backoff==2.2.1
 bangla==0.0.2
 bark==0.1.5
 bcrypt==4.2.1
-bitsandbytes==0.45.4
+bitsandbytes==0.50.2
 blinker==1.9.0
 blis==1.2.1
 blobfile==3.0.0
@@ -45,7 +45,7 @@ comm==0.2.2
 confection==0.1.5
 contourpy==1.2.1
 coqpit==0.0.17
-ctranslate2==4.5.0
+crisperwhisper[ct2,convert]==2.0.2
 cycler==0.12.1
 cymem==2.0.11
 Cython==3.0.12
@@ -64,7 +64,6 @@ encodec==0.1.1
 exceptiongroup==1.2.2
 executing==2.2.0
 fastapi==0.115.9
-faster-whisper==1.1.1
 ffmpeg==1.4
 ffmpy==0.5.0
 filelock==3.17.0

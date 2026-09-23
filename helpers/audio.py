@@ -1,30 +1,16 @@
 import os
-# from werkzeug.utils import secure_filename
-# import subprocess
-import os
-# from pathlib import Path
-# import pandas
+import re
 import uuid
-import re 
-# from wordsegment import load, segment
-import torch
-import uuid
-import os
-import soundfile as sf
-import librosa
-import numpy as np
 
 # load()
 
-def transcribe_audio(audio_file, model, processor):
+def transcribe_audio(audio_file, model):
     """
-    Hardened transcription function using CrisperWhisper (manual model+processor, not HF pipeline).
-    Handles stereo audio, resampling to 16kHz, silence check, and model-safe input.
+    Transcribe speech with CrisperWhisper 2.0 in verbatim mode.
 
     Args:
         audio_file: path to .wav file or Flask FileStorage object
-        model: HuggingFace AutoModelForSpeechSeq2Seq (CrisperWhisper)
-        processor: HuggingFace AutoProcessor (CrisperWhisper)
+        model: CrisperWhisperModel configured with the Turbo CT2 backend
 
     Returns:
         transcription (str), audio_path (str)
@@ -40,48 +26,16 @@ def transcribe_audio(audio_file, model, processor):
     else:
         audio_path = audio_file
 
-    # Read and preprocess audio
     try:
-        audio_array, sr = sf.read(audio_path)
-
-        if len(audio_array.shape) > 1:
-            audio_array = np.mean(audio_array, axis=1)
-
-        if np.max(np.abs(audio_array)) < 1e-4:
-            raise ValueError("Audio input is silent or empty.")
-
-        if sr != 16000:
-            audio_array = librosa.resample(audio_array, orig_sr=sr, target_sr=16000)
-            sr = 16000
-
-    except Exception as e:
-        raise RuntimeError(f"[Audio Error] Failed to load or preprocess audio: {e}")
-
-    # Tokenize input
-    inputs = processor(
-        audio=audio_array,
-        sampling_rate=sr,
-        return_tensors="pt"
-    )
-
-    input_features = inputs["input_features"].to(device=model.device, dtype=model.dtype)
-    attention_mask = (input_features != 0.0).long()
-
-    model.config.forced_decoder_ids = None
-
-    with torch.no_grad():
-        generated = model.generate(
-            input_features=input_features,
-            attention_mask=attention_mask,
-            max_new_tokens=440,
-            return_dict_in_generate=True,
-            output_scores=True,
-            do_sample=False,
+        result = model.transcribe(
+            audio_path,
             language="en",
+            mode="verbatim",
         )
+    except Exception as e:
+        raise RuntimeError(f"[ASR Error] Failed to transcribe audio: {e}") from e
 
-    transcription = processor.batch_decode(generated.sequences, skip_special_tokens=True)[0]
-    return transcription.strip(), audio_path
+    return result.text.strip(), audio_path
 
 import re
 from transformers import pipeline

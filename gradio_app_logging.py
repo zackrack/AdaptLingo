@@ -28,6 +28,7 @@ import tempfile
 import numpy as np
 import soundfile as sf
 import openai
+from dotenv import load_dotenv
 from datetime import datetime
 from gradio import mount_gradio_app
 from pyngrok import ngrok
@@ -37,6 +38,7 @@ app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 os.environ['TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD'] = '1'
+load_dotenv()
 
 # ------------------------------
 # NEW: Global state for Prolific ID
@@ -74,13 +76,15 @@ config_lock = Lock()
 def load_app_data():
     global init_data
     with config_lock:
-        init_data = load_initial_data(initialize)
+        init_data = load_initial_data(lambda: initialize(load_local_tts=False))
         print("Loaded Configuration")
 
-load_app_data()
-
-openai.api_key = os.getenv("OPENAI_API_KEY")
+api_key = os.getenv("OPENAI_API_KEY")
+if not api_key:
+    raise RuntimeError("OPENAI_API_KEY environment variable is not set.")
 client = openai.OpenAI(api_key=api_key)
+
+load_app_data()
 
 def fluency_to_speed(fluency_level):
     if isinstance(fluency_level, int):
@@ -118,52 +122,23 @@ def generate_speech_openai(text, fluency_level, voice="nova", model="gpt-4o-mini
         print(f"❌ [TTS ERROR] {e}")
         return None
 
-def classify_sentence_toxicity(sentence: str) -> str:
-    """
-    Classifies a single sentence as 'toxic' or 'non-toxic'.
-    
-    Args:
-        sentence (str): The input sentence to classify.
-    
-    Returns:
-        str: The classification result ('toxic' or 'non-toxic').
-    """
-    try:
-        # Define the system prompt
-        system_message = (
-            "You are a helpful assistant trained to classify text in any language as either 'toxic' or 'non-toxic'. "
-            "If the text contains hateful, abusive, obscene, sexual, discriminatory, violent, illegal, or harmful language, classify it as 'toxic'. The text must be appropriate for a 12 year-old to read."
-            "Otherwise, classify it as 'non-toxic'. Provide only one word: 'toxic' or 'non-toxic'."
-        )
-
-        # Call OpenAI's ChatCompletion endpoint
-        response = client.chat.completions.create(
-            model="gpt-4o-mini-2024-07-18",  # Replace with the desired model
-            messages=[
-                {"role": "system", "content": system_message},
-                {"role": "user", "content": sentence},
-            ],
-            max_tokens=5,  # Minimal tokens since we only need "toxic" or "non-toxic"
-            temperature=0,
-        )
-
-        # Extract and return the classification
-        classification = response.choices[0].message.content.strip()
-        print("toxic sentence: ", classification)
-        return classification
-    except Exception as e:
-        print(f"Error classifying sentence: {sentence}\nError: {e}\n")
-        return "Error"
-
-
 def process_user_audio_openai(audio_np, history):
     global init_data
+    request_started_at = time.perf_counter()
+    timings = {}
+
+    def record_timing(stage, started_at):
+        elapsed = time.perf_counter() - started_at
+        timings[stage] = elapsed
+        print(f"⏱️ [TIMING] {stage}: {elapsed:.3f}s", flush=True)
+
     print("🚦 [START] process_user_audio_openai called", flush=True)
 
     # print("📥 [START] Submit clicked.")
     # print(f"[DEBUG] raw audio_np: {audio_np!r}")
 
     def safe_return(history, audio, label):
+        finalize_started_at = time.perf_counter()
         if not isinstance(audio, tuple) or len(audio) != 2:
             # print("⚠️ [SAFE_RETURN] Audio output was not a tuple. Fixing.")
             audio = (None, None)
@@ -184,6 +159,13 @@ def process_user_audio_openai(audio_np, history):
         print("📤 [RETURN] Chatbot update keys:", [msg['role'] for msg in history])
         # Send `history` to both Chatbot and State
         time.sleep(0.2)
+        record_timing("response_finalize", finalize_started_at)
+        total_elapsed = time.perf_counter() - request_started_at
+        timing_summary = ", ".join(
+            f"{stage}={elapsed:.3f}s" for stage, elapsed in timings.items()
+        )
+        print(f"⏱️ [TIMING] total: {total_elapsed:.3f}s", flush=True)
+        print(f"⏱️ [TIMING SUMMARY] {timing_summary}", flush=True)
         return new_history, audio, label, new_history
 
 
@@ -202,9 +184,12 @@ def process_user_audio_openai(audio_np, history):
         })
         return safe_return(history, (None, None), "Unknown")
 
+    audio_read_started_at = time.perf_counter()
     try:
         data, sr = sf.read(audio_np)
+        record_timing("audio_read", audio_read_started_at)
     except Exception as e:
+        record_timing("audio_read", audio_read_started_at)
         print(f"❌ [AUDIO] Read error: {e}")
         if history is None:
             history = []
@@ -220,28 +205,23 @@ def process_user_audio_openai(audio_np, history):
     tmp_path = os.path.join(save_dir, f"{CURRENT_PROLIFIC_ID}_user_input_{timestamp}.wav")
 
     try:
+        audio_save_started_at = time.perf_counter()
         sf.write(tmp_path, data, sr)
+        record_timing("audio_save", audio_save_started_at)
         # print(f"💾 [SAVED] Audio saved to: {tmp_path}")
 
         cr_model = init_data['crisperwhisper_model']
-        processor = init_data['crisperwhisper_processor']
-        user_input, audio_file_path = transcribe_audio(tmp_path, cr_model, processor)
-
-        # Check for toxicity
-        toxicity_result = classify_sentence_toxicity(user_input)
-        if toxicity_result.lower() == "toxic":
-            print("🚫 [TOXICITY] Input was flagged as toxic.")
-            history.append({
-                "role": "assistant",
-                "content": "⚠️ Your message was flagged as inappropriate. Please try again with respectful language."
-            })
-            return safe_return(history, (None, None), "Flagged")
+        asr_started_at = time.perf_counter()
+        user_input, audio_file_path = transcribe_audio(tmp_path, cr_model)
+        record_timing("asr", asr_started_at)
 
         # print(f"📝 [TRANSCRIPTION] Text: '{user_input}'")
 
+        fluency_started_at = time.perf_counter()
         syll, sr_feats, ar, asd = calculate_all_features(user_input, audio_file_path)
         fl = classify_fluency(init_data['rf_model'], sr_feats, ar, asd)
         fluency_level = int(np.array(fl).item())
+        record_timing("fluency_analysis", fluency_started_at)
         # print(f"📊 [FLUENCY] Level: {fluency_level}")
 
         vector_collection = [
@@ -258,7 +238,11 @@ def process_user_audio_openai(audio_np, history):
         device          = init_data['device']
 
         # boost_words = knn_search(user_input, embedding_model, vector_collection) + essential_words
+        retrieval_started_at = time.perf_counter()
         boost_words = knn_search(user_input, embedding_model, vector_collection)
+        record_timing("retrieval", retrieval_started_at)
+
+        prompt_started_at = time.perf_counter()
         logits_proc   = create_boost_processor(tokenizer, boost_words, boost_value)
         stopping_crit = create_stopping_criteria(tokenizer)
 
@@ -279,24 +263,17 @@ def process_user_audio_openai(audio_np, history):
             f"User: {user_input}\n"
             "Assistant:"
         )
+        record_timing("prompt_setup", prompt_started_at)
         print("🧠 [GENERATION] Prompt ready. Calling generate_response...", flush=True)
         print(f"🧾 [PROMPT HEAD] {prompt[:300]}...", flush=True)
 
+        generation_started_at = time.perf_counter()
         assistant_response = generate_response(
             model, tokenizer, prompt,
             logits_proc, stopping_crit, device
         )
+        record_timing("llm_generation", generation_started_at)
         # print(f"🤖 [RESPONSE] {assistant_response[:80]}...")
-
-        # 🧪 Check assistant output for toxicity
-        toxicity_result = classify_sentence_toxicity(assistant_response)
-        if toxicity_result.lower() == "toxic":
-            print("🚫 [TOXICITY] Assistant response flagged as toxic.")
-            history.append({
-                "role": "assistant",
-                "content": "⚠️ Something went wrong generating a safe response. Please try again."
-            })
-            return safe_return(history, (None, None), "Flagged")
 
         print("🤖 [GENERATION DONE] Assistant response received.", flush=True)
         print(f"📤 [RESPONSE HEAD] {assistant_response[:300]}", flush=True)
@@ -315,13 +292,14 @@ def process_user_audio_openai(audio_np, history):
         for i, msg in enumerate(new_history):
             print(f"   {i+1}. [{msg['role']}] {msg['content'][:60]}")
 
-
-
+        tts_started_at = time.perf_counter()
         tts_bytes = generate_speech_openai(assistant_response, fluency_level, response_format="wav")
+        record_timing("tts_request", tts_started_at)
         if not tts_bytes:
             print("❌ [TTS] No audio returned.")
             return safe_return(history, (None, None), fluency_level)
 
+        tts_decode_started_at = time.perf_counter()
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tts_file:
             tts_file.write(tts_bytes)
             tts_file.flush()
@@ -330,13 +308,16 @@ def process_user_audio_openai(audio_np, history):
 
         out_data, out_sr = sf.read(tts_path, dtype='float32')
         os.remove(tts_path)
+        record_timing("tts_decode", tts_decode_started_at)
 
+        logging_started_at = time.perf_counter()
         log_with_pid(
             user_input=user_input,
             assistant_response=assistant_response,
             fluency_level=label,
             audio_path=tmp_path
         )
+        record_timing("interaction_logging", logging_started_at)
 
         print("✅ [DONE]")
         print("🧩 [DEBUG] Preparing return payload...", flush=True)
@@ -436,7 +417,7 @@ with gr.Blocks(css=custom_css) as demo:
     gr.HTML("""
         <div id="custom-title">
             <img src="/static/images/AdaptLingoAvatar.png" alt="Avatar" id="avatar-inline">
-            <span>Talk with Bot A!</span>
+            <span>Talk with AdaptLingo!</span>
         </div>
         <div id="instructions">
             <ol>
@@ -482,14 +463,14 @@ with gr.Blocks(css=custom_css) as demo:
     )
 
     response_text = gr.Chatbot(
-        label="💬 Bot A Chat",
+        label="💬 AdaptLingo Chat",
         elem_id="response-box",
         type="messages",
         autoscroll=True
     )
 
     audio_output = gr.Audio(
-        label="🔊 Bot A Voice",
+        label="🔊 AdaptLingo Voice",
         interactive=False,
         autoplay=True,
         type="numpy",

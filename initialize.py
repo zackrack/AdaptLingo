@@ -12,7 +12,7 @@ from helpers import (
     read_words_file, get_or_create_collection, load_crisper_model, load_rf_model
 )
 
-def initialize():
+def initialize(load_local_tts=True):
     with open('config.json', 'r') as config_file:
         config = json.load(config_file)
     print("Config loaded.")
@@ -62,11 +62,15 @@ def initialize():
     model.to(device)
     print("Chatbot model loaded.")
 
-    load_bert_model(bert_models_config)
-    print("BERT models loaded.")
+    if load_local_tts:
+        load_bert_model(bert_models_config)
+        print("BERT models loaded.")
 
-    tts_model = load_tts_model(tts_model_config)
-    print("TTS model loaded.")
+        tts_model = load_tts_model(tts_model_config)
+        print("Local TTS model loaded.")
+    else:
+        tts_model = None
+        print("Local TTS and supporting BERT models skipped.")
 
     beginner_words = read_words_file(beginner_words_filename)
     intermediate_words = read_words_file(intermediate_words_filename)
@@ -98,8 +102,8 @@ def initialize():
     advanced_collection = get_or_create_collection(client, "advanced_embeddings", advanced_words, advanced_embeddings)
     print("Advanced collection created.")
 
-    crisperwhisper_model, crisperwhisper_processor = load_crisper_model()
-    print("Crisper Whisper pipeline loaded.")
+    crisperwhisper_model = load_crisper_model()
+    print("CrisperWhisper 2.0 Turbo CT2 model loaded.")
 
     clf = load_rf_model(rf_model)
     print("Classifier model loaded.")
@@ -118,7 +122,7 @@ def initialize():
         'boost_value': boost_value,
         'device': device,
         'crisperwhisper_model': crisperwhisper_model,
-        'crisperwhisper_processor': crisperwhisper_processor,
+        'crisperwhisper_pipe': crisperwhisper_model,
         'rf_model': clf,
         'beginner_collection': beginner_collection,
         'intermediate_collection': intermediate_collection,

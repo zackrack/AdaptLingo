@@ -2,13 +2,13 @@ from style_bert_vits2.nlp import bert_models
 from style_bert_vits2.constants import Languages
 from style_bert_vits2.tts_model import TTSModel
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 from huggingface_hub import hf_hub_download
+from crisperwhisper import CrisperWhisperModel
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 import torch
-from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
 from huggingface_hub import hf_hub_download
 import joblib
-from faster_whisper import WhisperModel
 from datasets import load_dataset
 
 def load_rf_model(model_path):
@@ -20,32 +20,31 @@ def load_rf_model(model_path):
     return clf
 
 
+class ThreadPinnedModel:
+    """Run a model's construction and every transcribe() call on one dedicated thread.
+
+    The CrisperWhisper CT2 backend only decodes correctly on the thread that
+    created it; calls from any other thread (e.g. Gradio's request workers)
+    return multilingual gibberish. Also serializes concurrent requests.
+    """
+
+    def __init__(self, factory):
+        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="crisperwhisper")
+        self._model = self._executor.submit(factory).result()
+
+    def transcribe(self, *args, **kwargs):
+        return self._executor.submit(self._model.transcribe, *args, **kwargs).result()
+
+
 def load_crisper_model():
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
-    model_id = "nyrahealth/CrisperWhisper"
-
-    model = AutoModelForSpeechSeq2Seq.from_pretrained(
-        model_id,
-        torch_dtype=torch_dtype,
-        low_cpu_mem_usage=True,
-        use_safetensors=True
-    ).to(device)
-
-    processor = AutoProcessor.from_pretrained(model_id)
-
-    return model, processor
-
-    # faster_whisper_model = 'nyrahealth/faster_CrisperWhisper'
-
-    # # Initialize the Whisper model
-
-    # device = "cuda" if torch.cuda.is_available() else "cpu"
-    # torch_dtype = "float16" if torch.cuda.is_available() else "float32"
-    # crisper_whisper_model = WhisperModel(faster_whisper_model, device=device, compute_type="float32")
-
-    # return crisper_whisper_model
-    # return crisperwhisper_pipe
+    """Load CrisperWhisper 2.0 Turbo with its optimized CT2 backend."""
+    use_cuda = torch.cuda.is_available()
+    return ThreadPinnedModel(lambda: CrisperWhisperModel(
+        "turbo",
+        backend="ct2",
+        device="cuda" if use_cuda else "cpu",
+        compute_type="float16" if use_cuda else "int8",
+    ))
 
 def load_bert_model(bert_models_config):
     """
